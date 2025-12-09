@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ConfigurationListView: View {
     @StateObject private var configManager = ConfigurationManager()
+    @Environment(\.openWindow) private var openWindow
     @State private var selectedConfig: OSSConfiguration?
     @State private var editingConfig: OSSConfiguration?
     @State private var isCreatingNew = false
@@ -137,20 +138,9 @@ struct ConfigurationListView: View {
     }
 
     private func openMainWindow() {
+        // 使用 SwiftUI 的 openWindow API 打开新窗口
         if let config = selectedConfig {
-            // 打开主窗口
-            let mainWindow = MainWindowView(config: config)
-
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.center()
-            window.title = config.name
-            window.contentViewController = NSHostingController(rootView: mainWindow)
-            window.makeKeyAndOrderFront(nil)
+            openWindow(value: config)
         }
     }
 }
