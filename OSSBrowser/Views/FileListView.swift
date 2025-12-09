@@ -18,66 +18,78 @@ struct FileListView: View {
     let onFileDoubleClick: (OSSFile) -> Void
 
     var body: some View {
-        ZStack {
-            // 文件列表
-            if isLoading && files.isEmpty {
-                ProgressView()
-                    .scaleEffect(1.2)
-            } else if files.isEmpty {
-                ContentUnavailableView(
-                    "空文件夹",
-                    systemImage: "folder",
-                    description: Text("这个文件夹还没有文件")
-                )
-            } else {
-                // 使用自定义的列表视图
-                VStack(spacing: 0) {
-                    // 表头
-                    HStack(spacing: 0) {
-                        // 名称列
-                        Text("名称")
-                            .font(.headline)
-                            .padding(.leading, 16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        // 修改日期列
-                        Text("修改日期")
-                            .font(.headline)
-                            .frame(width: 200, alignment: .leading)
-
-                        // 大小列
-                        Text("大小")
-                            .font(.headline)
-                            .frame(width: 100, alignment: .trailing)
-                            .padding(.trailing, 16)
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                // 文件列表
+                if isLoading && files.isEmpty {
+                    VStack {
+                        Spacer()
+                        ProgressView()
+                            .scaleEffect(1.2)
+                        Spacer()
                     }
-                    .padding(.vertical, 8)
-                    .background(Color(NSColor.controlBackgroundColor))
+                } else if files.isEmpty {
+                    VStack {
+                        Spacer()
+                        ContentUnavailableView(
+                            "空文件夹",
+                            systemImage: "folder",
+                            description: Text("这个文件夹还没有文件")
+                        )
+                        Spacer()
+                    }
+                } else {
+                    // 使用自定义的列表视图
+                    VStack(spacing: 0) {
+                        // 表头
+                        HStack(spacing: 0) {
+                            // 名称列
+                            Text("名称")
+                                .font(.headline)
+                                .padding(.leading, 16)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Divider()
+                            // 修改日期列
+                            Text("修改日期")
+                                .font(.headline)
+                                .frame(width: 200, alignment: .leading)
 
-                    // 文件列表内容
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(files) { file in
-                                FileRowView(
-                                    file: file,
-                                    isSelected: selectedFile?.id == file.id,
-                                    onClick: { handleFileClick(file) }
-                                )
-                                .background(
-                                    selectedFile?.id == file.id ?
-                                    Color(NSColor.selectedContentBackgroundColor).opacity(0.5) :
-                                    Color.clear
-                                )
-                                .onTapGesture {
-                                    handleFileClick(file)
+                            // 大小列
+                            Text("大小")
+                                .font(.headline)
+                                .frame(width: 100, alignment: .trailing)
+                                .padding(.trailing, 16)
+                        }
+                        .padding(.vertical, 8)
+                        .background(Color(NSColor.controlBackgroundColor))
+
+                        Divider()
+
+                        // 文件列表内容 - 使用 ScrollView 确保从顶部开始
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
+                                ForEach(files) { file in
+                                    FileRowView(
+                                        file: file,
+                                        isSelected: selectedFile?.id == file.id,
+                                        onClick: { handleFileClick(file) }
+                                    )
+                                    .background(
+                                        selectedFile?.id == file.id ?
+                                        Color(NSColor.selectedContentBackgroundColor).opacity(0.5) :
+                                        Color.clear
+                                    )
+                                    .onTapGesture {
+                                        handleFileClick(file)
+                                    }
                                 }
                             }
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

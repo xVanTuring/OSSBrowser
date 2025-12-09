@@ -41,7 +41,7 @@ struct OSSFileBrowserView: View {
 
             Divider()
 
-            // 文件列表
+            // 文件列表 - 使用最大高度确保占据可用空间
             FileListView(
                 files: fileService.files,
                 selectedFiles: $selectedFiles,
@@ -49,6 +49,7 @@ struct OSSFileBrowserView: View {
                 onFileSelect: handleFileSelect,
                 onFileDoubleClick: handleFileDoubleClick
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
 
@@ -59,6 +60,7 @@ struct OSSFileBrowserView: View {
                 isLoading: fileService.isLoading
             )
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             Task {
                 try? await fileService.listFiles()
