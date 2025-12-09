@@ -10,6 +10,9 @@ import SwiftUI
 struct FileListView: View {
     let files: [OSSFile]
     @Binding var selectedFiles: Set<String>
+    @State private var selectedFile: OSSFile?
+    @State private var lastClickTime: Date = Date()
+    @State private var lastClickedFile: String?
     let isLoading: Bool
     let onFileSelect: (OSSFile) -> Void
     let onFileDoubleClick: (OSSFile) -> Void
@@ -27,55 +30,111 @@ struct FileListView: View {
                     description: Text("这个文件夹还没有文件")
                 )
             } else {
-                Table(files) {
-                    TableColumn("") { file in
-                        Image(systemName: file.iconName)
-                            .foregroundColor(file.isDirectory ? .blue : .primary)
-                            .frame(width: 20)
-                    }
-                    .width(20)
+                // 使用自定义的列表视图
+                VStack(spacing: 0) {
+                    // 表头
+                    HStack(spacing: 0) {
+                        // 名称列
+                        Text("名称")
+                            .font(.headline)
+                            .padding(.leading, 16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                    TableColumn("名称") { file in
-                        HStack {
-                            Image(systemName: file.iconName)
-                                .foregroundColor(file.isDirectory ? .blue : .primary)
-                                .frame(width: 20)
-                            Text(file.name)
-                                .fontWeight(file.isDirectory ? .medium : .regular)
+                        // 修改日期列
+                        Text("修改日期")
+                            .font(.headline)
+                            .frame(width: 200, alignment: .leading)
+
+                        // 大小列
+                        Text("大小")
+                            .font(.headline)
+                            .frame(width: 100, alignment: .trailing)
+                            .padding(.trailing, 16)
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(NSColor.controlBackgroundColor))
+
+                    Divider()
+
+                    // 文件列表内容
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(files) { file in
+                                FileRowView(
+                                    file: file,
+                                    isSelected: selectedFile?.id == file.id,
+                                    onClick: { handleFileClick(file) }
+                                )
+                                .background(
+                                    selectedFile?.id == file.id ?
+                                    Color(NSColor.selectedContentBackgroundColor).opacity(0.5) :
+                                    Color.clear
+                                )
+                                .onTapGesture {
+                                    handleFileClick(file)
+                                }
+                            }
                         }
-                    }
-
-                    TableColumn("修改日期") { file in
-                        Text(file.lastModified, style: .date)
-                            .font(.caption)
-                    }
-                    .width(min: 150, ideal: 200)
-
-                    TableColumn("大小") { file in
-                        Text(file.fileSizeString)
-                            .font(.caption)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    .width(min: 80, ideal: 100)
-                }
-                .tableStyle(.inset(alternatesRowBackgrounds: true))
-                .cornerRadius(0)
-                .onTapGesture(count: 2) { location in
-                    // 找到被点击的文件
-                    if let index = findFileIndex(at: location) {
-                        let file = files[index]
-                        onFileDoubleClick(file)
                     }
                 }
             }
         }
     }
 
-    // 找到给定位置对应的文件索引（简化版，实际实现可能需要更复杂的逻辑）
-    private func findFileIndex(at location: CGPoint) -> Int? {
-        // 这是一个简化实现，实际应该根据点击位置计算行索引
-        // 这里暂时返回 nil，让用户通过双击列表项来触发
-        return nil
+    private func handleFileClick(_ file: OSSFile) {
+        let now = Date()
+        let timeSinceLastClick = now.timeIntervalSince(lastClickTime)
+
+        // 检查是否是双击（在同一文件上，且间隔小于 0.5 秒）
+        if lastClickedFile == file.id.uuidString && timeSinceLastClick < 0.5 {
+            // 双击
+            onFileDoubleClick(file)
+        } else {
+            // 单击
+            selectedFile = file
+            selectedFiles = [file.id.uuidString]
+            onFileSelect(file)
+        }
+
+        lastClickTime = now
+        lastClickedFile = file.id.uuidString
+    }
+}
+
+// 文件行视图
+struct FileRowView: View {
+    let file: OSSFile
+    let isSelected: Bool
+    let onClick: () -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // 名称列
+            HStack(spacing: 8) {
+                Image(systemName: file.iconName)
+                    .foregroundColor(file.isDirectory ? .blue : .primary)
+                    .frame(width: 16, height: 16)
+                Text(file.name)
+                    .fontWeight(file.isDirectory ? .medium : .regular)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 16)
+
+            // 修改日期列
+            Text(file.lastModified, style: .date)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 200, alignment: .leading)
+
+            // 大小列
+            Text(file.fileSizeString)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .frame(width: 100, alignment: .trailing)
+                .padding(.trailing, 16)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 }
 

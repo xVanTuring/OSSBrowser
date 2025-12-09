@@ -96,6 +96,7 @@ enum OSSError: LocalizedError {
     case invalidCredentials
     case networkError
     case ossError(code: String?, message: String?)
+    case alreadyAtRoot
 
     var errorDescription: String? {
         switch self {
@@ -113,6 +114,8 @@ enum OSSError: LocalizedError {
             } else {
                 return "OSS连接失败"
             }
+        case .alreadyAtRoot:
+            return "已经在根目录"
         }
     }
 }

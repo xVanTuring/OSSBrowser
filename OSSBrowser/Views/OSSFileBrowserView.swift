@@ -25,9 +25,9 @@ struct OSSFileBrowserView: View {
         VStack(spacing: 0) {
             // 工具栏
             FileBrowserToolbar(
-                currentPath: fileService.currentPath,
-                isLoading: fileService.isLoading,
+                fileService: fileService,
                 onGoBack: goBack,
+                onGoForward: goForward,
                 onRefresh: refresh,
                 onCreateFolder: { showingCreateFolder = true }
             )
@@ -88,7 +88,27 @@ struct OSSFileBrowserView: View {
     // MARK: - Actions
     private func goBack() {
         Task {
-            try? await fileService.goBack()
+            do {
+                try await fileService.goBack()
+            } catch {
+                fileService.error = error
+            }
+        }
+    }
+
+    private func goForward() {
+        Task {
+            do {
+                // 获取当前历史索引
+                if let currentIndex = fileService.currentHistoryIndex {
+                    let nextIndex = currentIndex + 1
+                    if nextIndex < fileService.navigationHistory.count {
+                        try await fileService.navigateToHistory(index: nextIndex)
+                    }
+                }
+            } catch {
+                fileService.error = error
+            }
         }
     }
 
@@ -105,7 +125,8 @@ struct OSSFileBrowserView: View {
     }
 
     private func handleFileSelect(_ file: OSSFile) {
-        // TODO: 处理文件选择
+        // 处理文件选择
+        print("Selected file: \(file.name)")
     }
 
     private func handleFileDoubleClick(_ file: OSSFile) {
@@ -136,30 +157,59 @@ struct OSSFileBrowserView: View {
 
 // MARK: - File Browser Toolbar
 struct FileBrowserToolbar: View {
-    let currentPath: String
-    let isLoading: Bool
+    @ObservedObject var fileService: OSSFileService
     let onGoBack: () -> Void
+    let onGoForward: () -> Void
     let onRefresh: () -> Void
     let onCreateFolder: () -> Void
 
+    var canGoBack: Bool {
+        fileService.canGoBack
+    }
+
+    var canGoForward: Bool {
+        if let currentIndex = fileService.currentHistoryIndex {
+            return currentIndex + 1 < fileService.navigationHistory.count
+        }
+        return false
+    }
+
     var body: some View {
-        HStack {
-            Button(action: onGoBack) {
-                Image(systemName: "arrow.left")
+        HStack(spacing: 12) {
+            // 导航按钮组
+            HStack(spacing: 8) {
+                Button(action: onGoBack) {
+                    Image(systemName: "chevron.left")
+                }
+                .disabled(!canGoBack || fileService.isLoading)
+                .help("返回上级目录")
+
+                Button(action: onGoForward) {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(!canGoForward || fileService.isLoading)
+                .help("前进")
             }
-            .disabled(currentPath.isEmpty || isLoading)
+
+            Divider()
+                .frame(height: 20)
 
             Spacer()
 
-            Button(action: onRefresh) {
-                Image(systemName: "arrow.clockwise")
-            }
-            .disabled(isLoading)
+            // 操作按钮组
+            HStack(spacing: 8) {
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(fileService.isLoading)
+                .help("刷新")
 
-            Button(action: onCreateFolder) {
-                Image(systemName: "plus")
+                Button(action: onCreateFolder) {
+                    Image(systemName: "plus")
+                }
+                .disabled(fileService.isLoading)
+                .help("新建文件夹")
             }
-            .disabled(isLoading)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

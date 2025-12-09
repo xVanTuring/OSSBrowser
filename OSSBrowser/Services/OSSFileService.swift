@@ -19,6 +19,7 @@ class OSSFileService: ObservableObject {
     @Published var files: [OSSFile] = []
     @Published var isLoading: Bool = false
     @Published var error: Error?
+    @Published var navigationHistory: [String] = [] // 导航历史
 
     init(config: OSSConfiguration, bucketName: String) {
         self.config = config
@@ -41,7 +42,27 @@ class OSSFileService: ObservableObject {
         }
     }
 
-    func listFiles(at path: String = "") async throws {
+    func listFiles(at path: String = "", addToHistory: Bool = true) async throws {
+        // 如果是新路径，添加到历史记录
+        if addToHistory && path != currentPath {
+            // 如果不是返回操作（即不是历史记录中的路径），则清除后续历史
+            if let currentIndex = navigationHistory.firstIndex(of: currentPath) {
+                let indexAfterCurrent = navigationHistory.index(after: currentIndex)
+                if indexAfterCurrent < navigationHistory.count {
+                    navigationHistory.removeSubrange(indexAfterCurrent...)
+                }
+            }
+
+            // 添加新路径到历史（避免重复）
+            if navigationHistory.last != path {
+                navigationHistory.append(path)
+                // 限制历史记录长度
+                if navigationHistory.count > 50 {
+                    navigationHistory.removeFirst()
+                }
+            }
+        }
+
         currentPath = path
         isLoading = true
         error = nil
@@ -123,19 +144,44 @@ class OSSFileService: ObservableObject {
     }
 
     func goBack() async throws {
-        if currentPath.isEmpty {
-            return
+        // 计算父目录路径
+        guard !currentPath.isEmpty else {
+            throw OSSError.alreadyAtRoot
         }
 
         let parentPath: String
-        if currentPath.isEmpty {
-            parentPath = ""
+        if currentPath.contains("/") {
+            let trimmedPath = currentPath.trimmingCharacters(in: ["/"])
+            parentPath = trimmedPath.components(separatedBy: "/").dropLast().joined(separator: "/")
         } else {
-            parentPath = URL(fileURLWithPath: currentPath)
-                .deletingLastPathComponent()
-                .path
+            parentPath = ""
         }
+
         try await listFiles(at: parentPath)
+    }
+
+    // 导航到历史记录中的指定路径
+    func navigateToHistory(index: Int) async throws {
+        guard index >= 0 && index < navigationHistory.count else {
+            return
+        }
+        let path = navigationHistory[index]
+        try await listFiles(at: path, addToHistory: false)
+    }
+
+    // 检查是否可以返回
+    var canGoBack: Bool {
+        return !currentPath.isEmpty
+    }
+
+    // 检查是否有历史记录
+    var hasHistory: Bool {
+        return !navigationHistory.isEmpty
+    }
+
+    // 获取当前在历史记录中的索引
+    var currentHistoryIndex: Int? {
+        return navigationHistory.firstIndex(of: currentPath)
     }
 
     func createDirectory(name: String) async throws {

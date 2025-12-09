@@ -27,6 +27,7 @@ struct OSSBrowserContentView: View {
             // 中间内容区 - 文件列表
             if let bucket = selectedBucket {
                 OSSFileBrowserView(bucket: bucket, config: config)
+                    .id(bucket.id) // 添加 id 以确保在切换 bucket 时重新创建视图
                     .navigationSplitViewColumnWidth(min:500,ideal: 600)
             } else {
                 ContentUnavailableView(
