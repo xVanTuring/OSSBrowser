@@ -117,7 +117,7 @@ enum OSSError: LocalizedError {
     }
 }
 
-struct BucketItem: Identifiable {
+struct BucketItem: Identifiable, Hashable {
     let id = UUID()
     let name: String
     let region: String
