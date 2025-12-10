@@ -18,8 +18,9 @@ struct OSSBrowserContentView: View {
     @State private var currentFileCount = 0
     @State private var currentSelectedCount = 0
     @State private var currentIsLoading = false
-    
+
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var inspectShow: Bool = true
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -30,7 +31,7 @@ struct OSSBrowserContentView: View {
                 isLoading: isLoading
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 250)
-        } content: {
+        } detail: {
             // 中间内容区 - 文件列表
             if let bucket = selectedBucket {
                 NavigationStack {
@@ -46,8 +47,8 @@ struct OSSBrowserContentView: View {
                     )
                     .navigationTitle(bucket.name)
                 }
-                .id(bucket.id) // 添加 id 以确保在切换 bucket 时重新创建视图
-                .navigationSplitViewColumnWidth(min:500,ideal: 600)
+                .id(bucket.id)  // 添加 id 以确保在切换 bucket 时重新创建视图
+                .navigationSplitViewColumnWidth(min: 500, ideal: 600)
             } else {
                 ContentUnavailableView(
                     "选择一个 Bucket",
@@ -55,8 +56,7 @@ struct OSSBrowserContentView: View {
                     description: Text("从左侧选择一个 Bucket 来查看文件")
                 )
             }
-        } detail: {
-            // 右侧详情区 - 现在包含文件状态信息
+        }.inspector(isPresented: $inspectShow) {
             if let bucket = selectedBucket {
                 BucketDetailView(
                     bucket: bucket,
@@ -109,5 +109,5 @@ struct OSSBrowserContentView: View {
             region: "cn-shenzhen"
         ),
         ossService: OSSService()
-    ).frame(width: 1200,height: 500)
+    ).frame(width: 1200, height: 500)
 }
