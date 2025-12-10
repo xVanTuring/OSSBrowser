@@ -262,3 +262,7 @@ func main() async throws {
 
 ## 许可协议
 > - Apache-2.0, 请参阅 [许可文件](LICENSE)
+
+
+## 问题
+1. SDK 0.2 目前不支持流式下载，无法解决动态进度和速度的问题

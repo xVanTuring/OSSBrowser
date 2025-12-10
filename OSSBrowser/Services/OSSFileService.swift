@@ -193,4 +193,51 @@ class OSSFileService: ObservableObject {
         print("Create directory result: \(result.requestId)")
         try await listFiles(at: currentPath)
     }
+
+    func deleteFile(_ file: OSSFile) async throws {
+        guard let client = client else {
+            throw OSSError.clientNotInitialized
+        }
+
+        if file.isDirectory {
+            // 删除文件夹 - 需要删除所有子文件和子文件夹
+            try await deleteDirectory(file.key)
+        } else {
+            // 删除单个文件
+            let result = try await client.deleteObject(DeleteObjectRequest(
+                bucket: bucketName,
+                key: file.key
+            ))
+            print("Delete file result: \(result.requestId)")
+        }
+    }
+
+    private func deleteDirectory(_ directoryKey: String) async throws {
+        guard let client = client else {
+            throw OSSError.clientNotInitialized
+        }
+
+        // 获取文件夹中的所有文件
+        let listResult = try await client.listObjectsV2(ListObjectsV2Request(
+            bucket: bucketName,
+            prefix: directoryKey
+        ))
+
+        // 逐个删除所有文件
+        if let objects = listResult.contents {
+            for object in objects {
+                let result = try await client.deleteObject(DeleteObjectRequest(
+                    bucket: bucketName,
+                    key: object.key
+                ))
+                print("Delete object result: \(result.requestId)")
+            }
+        }
+
+        // 如果文件夹本身也是一个对象（如空文件夹），也需要删除
+        let _ = try await client.deleteObject(DeleteObjectRequest(
+            bucket: bucketName,
+            key: directoryKey
+        ))
+    }
 }

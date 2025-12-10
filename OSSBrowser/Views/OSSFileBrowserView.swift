@@ -39,7 +39,8 @@ struct OSSFileBrowserContent: View {
                 onFileSelect: handleFileSelect,
                 onFileDoubleClick: handleFileDoubleClick,
                 onDownloadFile: handleDownloadFile,
-                onDownloadFolder: handleDownloadFolder
+                onDownloadFolder: handleDownloadFolder,
+                onDeleteFile: handleDeleteFile
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -194,6 +195,18 @@ struct OSSFileBrowserContent: View {
         DownloadManager.shared.configure(with: config)
         // 下载整个文件夹
         DownloadManager.shared.downloadFolder(folder, from: bucket.name, files: fileService.files)
+    }
+
+    private func handleDeleteFile(_ file: OSSFile) {
+        Task {
+            do {
+                try await fileService.deleteFile(file)
+                // 刷新文件列表
+                try? await fileService.listFiles(at: fileService.currentPath)
+            } catch {
+                fileService.error = error
+            }
+        }
     }
 
     // MARK: - Create Folder

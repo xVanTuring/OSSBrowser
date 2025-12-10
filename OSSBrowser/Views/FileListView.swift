@@ -13,11 +13,14 @@ struct FileListView: View {
     @State private var selectedFile: OSSFile?
     @State private var lastClickTime: Date = Date()
     @State private var lastClickedFile: String?
+    @State private var showingDeleteAlert = false
+    @State private var fileToDelete: OSSFile?
     let isLoading: Bool
     let onFileSelect: (OSSFile) -> Void
     let onFileDoubleClick: (OSSFile) -> Void
     let onDownloadFile: (OSSFile) -> Void
     let onDownloadFolder: (OSSFile) -> Void
+    let onDeleteFile: (OSSFile) -> Void
 
     var body: some View {
         GeometryReader { geometry in
@@ -78,7 +81,8 @@ struct FileListView: View {
                                         isSelected: selectedFile?.id == file.id,
                                         onClick: { handleFileClick(file) },
                                         onDownloadFile: onDownloadFile,
-                                        onDownloadFolder: onDownloadFolder
+                                        onDownloadFolder: onDownloadFolder,
+                                        onDelete: { handleDelete(file) }
                                     )
                                     // .background(
                                     //     selectedFile?.id == file.id
@@ -106,6 +110,20 @@ struct FileListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .alert("确认删除", isPresented: $showingDeleteAlert) {
+            Button("取消", role: .cancel) { }
+            Button("删除", role: .destructive) {
+                if let fileToDelete = fileToDelete {
+                    onDeleteFile(fileToDelete)
+                }
+            }
+        } message: {
+            if let fileToDelete = fileToDelete {
+                Text(fileToDelete.isDirectory
+                    ? "确定要删除文件夹 \"\(fileToDelete.name)\" 吗？此操作将删除文件夹及其所有内容。"
+                    : "确定要删除文件 \"\(fileToDelete.name)\" 吗？")
+            }
+        }
     }
 
     private func handleFileClick(_ file: OSSFile) {
@@ -126,6 +144,11 @@ struct FileListView: View {
         lastClickTime = now
         lastClickedFile = file.id.uuidString
     }
+
+    private func handleDelete(_ file: OSSFile) {
+        fileToDelete = file
+        showingDeleteAlert = true
+    }
 }
 
 // 文件行视图
@@ -135,6 +158,7 @@ struct FileRowView: View {
     let onClick: () -> Void
     let onDownloadFile: (OSSFile) -> Void
     let onDownloadFolder: (OSSFile) -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -178,6 +202,15 @@ struct FileRowView: View {
                     Label("下载", systemImage: "arrow.down.circle")
                 }
             }
+
+            Divider()
+
+            Button(action: {
+                onDelete()
+            }) {
+                Label("删除", systemImage: "trash")
+            }
+            .foregroundColor(.red)
         }
     }
 }
@@ -200,6 +233,7 @@ struct FileRowView: View {
         onFileSelect: { _ in },
         onFileDoubleClick: { _ in },
         onDownloadFile: { _ in },
-        onDownloadFolder: { _ in }
+        onDownloadFolder: { _ in },
+        onDeleteFile: { _ in }
     )
 }
