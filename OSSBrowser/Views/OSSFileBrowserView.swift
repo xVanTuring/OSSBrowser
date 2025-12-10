@@ -26,17 +26,13 @@ struct OSSFileBrowserContent: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 文件列表 - 使用最大高度确保占据可用空间
-            FileListView(
-                files: fileService.files,
-                selectedFiles: $selectedFiles,
-                isLoading: fileService.isLoading,
-                onFileSelect: handleFileSelect,
-                onFileDoubleClick: handleFileDoubleClick
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        FileListView(
+            files: fileService.files,
+            selectedFiles: $selectedFiles,
+            isLoading: fileService.isLoading,
+            onFileSelect: handleFileSelect,
+            onFileDoubleClick: handleFileDoubleClick
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             Task {
@@ -96,19 +92,23 @@ struct OSSFileBrowserContent: View {
             }
 
             // 右侧操作按钮
-            ToolbarItemGroup(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .automatic) {
                 Button(action: {
                     Task {
                         try? await fileService.listFiles(at: fileService.currentPath)
                     }
                 }) {
                     Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14))
+                        .controlSize(.mini)
                 }
                 .disabled(fileService.isLoading)
                 .help("刷新")
 
                 Button(action: { showingCreateFolder = true }) {
                     Image(systemName: "plus")
+                        .font(.system(size: 14))
+                        .controlSize(.mini)
                 }
                 .disabled(fileService.isLoading)
                 .help("新建文件夹")
