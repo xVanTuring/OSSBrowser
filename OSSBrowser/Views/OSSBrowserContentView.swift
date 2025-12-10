@@ -18,9 +18,11 @@ struct OSSBrowserContentView: View {
     @State private var currentFileCount = 0
     @State private var currentSelectedCount = 0
     @State private var currentIsLoading = false
+    
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             // 左侧边栏 - Bucket 列表
             BucketListView(
                 buckets: buckets,
