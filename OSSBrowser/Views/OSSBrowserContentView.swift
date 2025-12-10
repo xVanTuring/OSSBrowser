@@ -19,6 +19,12 @@ struct OSSBrowserContentView: View {
     @State private var currentSelectedCount = 0
     @State private var currentIsLoading = false
 
+    // 当前路径
+    @State private var currentPath = ""
+
+    // 文件服务引用，用于路径导航
+    @State private var fileServiceRef: OSSFileService?
+
     var body: some View {
         NavigationSplitView {
             // 左侧边栏 - Bucket 列表
@@ -32,16 +38,35 @@ struct OSSBrowserContentView: View {
             // 中间内容区 - 文件列表
             if let bucket = selectedBucket {
                 NavigationStack {
-                    OSSFileBrowserContent(
-                        bucket: bucket,
-                        config: config,
-                        onFileCountUpdate: { itemCount, selectedCount, isLoading in
-                            // 传递文件状态信息到详情面板
-                            currentFileCount = itemCount
-                            currentSelectedCount = selectedCount
-                            currentIsLoading = isLoading
-                        }
-                    )
+                    VStack(spacing: 0) {
+                        OSSFileBrowserContent(
+                            bucket: bucket,
+                            config: config,
+                            onFileCountUpdate: { itemCount, selectedCount, isLoading in
+                                // 传递文件状态信息到详情面板
+                                currentFileCount = itemCount
+                                currentSelectedCount = selectedCount
+                                currentIsLoading = isLoading
+                            },
+                            onPathChange: { newPath in
+                                currentPath = newPath
+                            },
+                            onFileServiceReady: { fileService in
+                                self.fileServiceRef = fileService
+                            }
+                        )
+
+                        // 底部路径导航栏
+                        PathNavigationView(
+                            bucketName: bucket.name,
+                            currentPath: currentPath,
+                            onPathClick: { path in
+                                Task {
+                                    await navigateToPath(path)
+                                }
+                            }
+                        )
+                    }
                     .navigationTitle(bucket.name)
                     .toolbar {
                         // 左侧导航按钮
@@ -108,6 +133,15 @@ struct OSSBrowserContentView: View {
                     // TODO: 显示错误
                 }
             }
+        }
+    }
+
+    private func navigateToPath(_ path: String) async {
+        guard let fileService = fileServiceRef else { return }
+        do {
+            try await fileService.listFiles(at: path)
+        } catch {
+            print("Failed to navigate to path \(path): \(error)")
         }
     }
 }

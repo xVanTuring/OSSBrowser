@@ -12,6 +12,8 @@ struct OSSFileBrowserContent: View {
     let bucket: BucketItem
     let config: OSSConfiguration
     let onFileCountUpdate: (Int, Int, Bool) -> Void
+    let onPathChange: (String) -> Void
+    let onFileServiceReady: (OSSFileService) -> Void
 
     @StateObject private var fileService: OSSFileService
     @State private var selectedFiles: Set<String> = []
@@ -20,11 +22,15 @@ struct OSSFileBrowserContent: View {
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
-        onFileCountUpdate: @escaping (Int, Int, Bool) -> Void
+        onFileCountUpdate: @escaping (Int, Int, Bool) -> Void,
+        onPathChange: @escaping (String) -> Void,
+        onFileServiceReady: @escaping (OSSFileService) -> Void = { _ in }
     ) {
         self.bucket = bucket
         self.config = config
         self.onFileCountUpdate = onFileCountUpdate
+        self.onPathChange = onPathChange
+        self.onFileServiceReady = onFileServiceReady
         self._fileService = StateObject(
             wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
     }
@@ -51,6 +57,13 @@ struct OSSFileBrowserContent: View {
         }
         .onChange(of: fileService.isLoading) {
             onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
+        }
+        .onChange(of: fileService.currentPath) {
+            onPathChange(fileService.currentPath)
+        }
+        .onAppear {
+            onPathChange(fileService.currentPath)
+            onFileServiceReady(fileService)
         }
         .alert("创建文件夹", isPresented: $showingCreateFolder) {
             TextField("文件夹名称", text: $folderName)
@@ -165,6 +178,7 @@ struct OSSFileBrowserContent: View {
             accessKeySecret: "",
             region: "cn-hangzhou"
         ),
-        onFileCountUpdate: { _, _, _ in }
+        onFileCountUpdate: { _, _, _ in },
+        onPathChange: { _ in }
     )
 }
