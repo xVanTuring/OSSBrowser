@@ -170,13 +170,18 @@ struct FileBrowserToolbar: View {
             HStack(spacing: 8) {
                 Button(action: onGoBack) {
                     Image(systemName: "chevron.left")
+                        .font(.system(size: 12))
+                        .frame(width: 16, height: 16)
                 }
                 .disabled(!canGoBack || fileService.isLoading)
                 .help("返回上级目录")
 
                 Button(action: onGoForward) {
                     Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
+                        .frame(width: 16, height: 16)
                 }
+//                .controlSize(.mini)
                 .disabled(!canGoForward || fileService.isLoading)
                 .help("前进")
             }
@@ -216,13 +221,21 @@ struct FileBrowserToolbar: View {
             HStack(spacing: 8) {
                 Button(action: onRefresh) {
                     Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12))
+                        .frame(width: 16, height: 16)
                 }
+                .controlSize(.regular)
+                .buttonStyle(.automatic)
                 .disabled(fileService.isLoading)
                 .help("刷新")
 
                 Button(action: onCreateFolder) {
                     Image(systemName: "plus")
+                        .font(.system(size: 14))
+                        .frame(width: 16, height: 16)
                 }
+                .controlSize(.regular)
+                .buttonStyle(.automatic)
                 .disabled(fileService.isLoading)
                 .help("新建文件夹")
             }
