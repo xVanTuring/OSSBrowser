@@ -67,16 +67,28 @@ struct FileListView: View {
                         // 文件列表内容 - 使用 ScrollView 确保从顶部开始
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
-                                ForEach(files) { file in
+
+                                // ForEach(files) { file in
+                                ForEach(Array(files.enumerated()), id: \.element.id) {
+                                    index, file in
                                     FileRowView(
                                         file: file,
                                         isSelected: selectedFile?.id == file.id,
                                         onClick: { handleFileClick(file) }
                                     )
+                                    // .background(
+                                    //     selectedFile?.id == file.id
+                                    //         ? Color(NSColor.selectedContentBackgroundColor).opacity(
+                                    //             0.5) : Color.clear
+                                    // )
                                     .background(
-                                        selectedFile?.id == file.id ?
-                                        Color(NSColor.selectedContentBackgroundColor).opacity(0.5) :
-                                        Color.clear
+                                        // 如果选中，则使用选中颜色，否则根据行号交替显示
+                                        selectedFile?.id == file.id
+                                            ? Color(NSColor.selectedContentBackgroundColor).opacity(
+                                                0.5)
+                                            : (index % 2 == 0
+                                                ? Color(Color.white.opacity(0.05))
+                                                : Color(NSColor.clear))
                                     )
                                     .onTapGesture {
                                         handleFileClick(file)
@@ -152,9 +164,15 @@ struct FileRowView: View {
 #Preview {
     FileListView(
         files: [
-            OSSFile(key: "folder1/", size: 0, lastModified: Date(), eTag: "", storageClass: "", isDirectory: true),
-            OSSFile(key: "file1.txt", size: 1024, lastModified: Date(), eTag: "", storageClass: "Standard", isDirectory: false),
-            OSSFile(key: "image.png", size: 2048, lastModified: Date(), eTag: "", storageClass: "Standard", isDirectory: false)
+            OSSFile(
+                key: "folder1/", size: 0, lastModified: Date(), eTag: "", storageClass: "",
+                isDirectory: true),
+            OSSFile(
+                key: "file1.txt", size: 1024, lastModified: Date(), eTag: "",
+                storageClass: "Standard", isDirectory: false),
+            OSSFile(
+                key: "image.png", size: 2048, lastModified: Date(), eTag: "",
+                storageClass: "Standard", isDirectory: false),
         ],
         selectedFiles: .constant([]),
         isLoading: false,
