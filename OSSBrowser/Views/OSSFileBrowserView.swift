@@ -137,20 +137,9 @@ struct OSSFileBrowserContent: View {
                 .help("新建文件夹")
 
                 // 下载进度按钮
-                Menu {
-                    Button(action: {
-                        showingDownloadProgress = true
-                    }) {
-                        Label("查看下载进度", systemImage: "list.bullet")
-                    }
-                    if !DownloadManager.shared.downloadTasks.isEmpty {
-                        Button(action: {
-                            DownloadManager.shared.removeCompletedTasks()
-                        }) {
-                            Label("清理已完成任务", systemImage: "trash")
-                        }
-                    }
-                } label: {
+                Button(action: {
+                    showingDownloadProgress = true
+                }) {
                     Image(systemName: "arrow.down.circle")
                         .font(.system(size: 14))
                         .controlSize(.mini)
@@ -172,7 +161,7 @@ struct OSSFileBrowserContent: View {
                             }
                         )
                 }
-                .help("下载任务")
+                .help("查看下载进度")
             }
         }
     }
