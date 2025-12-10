@@ -97,13 +97,7 @@ struct OSSFileBrowserView: View {
     private func goForward() {
         Task {
             do {
-                // 获取当前历史索引
-                if let currentIndex = fileService.currentHistoryIndex {
-                    let nextIndex = currentIndex + 1
-                    if nextIndex < fileService.navigationHistory.count {
-                        try await fileService.navigateToHistory(index: nextIndex)
-                    }
-                }
+                try await fileService.goForward()
             } catch {
                 fileService.error = error
             }
@@ -167,10 +161,7 @@ struct FileBrowserToolbar: View {
     }
 
     var canGoForward: Bool {
-        if let currentIndex = fileService.currentHistoryIndex {
-            return currentIndex + 1 < fileService.navigationHistory.count
-        }
-        return false
+        return fileService.canGoForward
     }
 
     var body: some View {

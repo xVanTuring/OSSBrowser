@@ -19,7 +19,10 @@ class OSSFileService: ObservableObject {
     @Published var files: [OSSFile] = []
     @Published var isLoading: Bool = false
     @Published var error: Error?
-    @Published var navigationHistory: [String] = [] // 导航历史
+
+    // 导航栈
+    private var backStack: [String] = []  // 可以后退的路径
+    private var forwardStack: [String] = []  // 可以前进的路径
 
     init(config: OSSConfiguration, bucketName: String) {
         self.config = config
@@ -43,24 +46,12 @@ class OSSFileService: ObservableObject {
     }
 
     func listFiles(at path: String = "", addToHistory: Bool = true) async throws {
-        // 如果是新路径，添加到历史记录
+        // 如果是新的导航（不是通过前进/后退），需要更新栈
         if addToHistory && path != currentPath {
-            // 如果不是返回操作（即不是历史记录中的路径），则清除后续历史
-            if let currentIndex = navigationHistory.firstIndex(of: currentPath) {
-                let indexAfterCurrent = navigationHistory.index(after: currentIndex)
-                if indexAfterCurrent < navigationHistory.count {
-                    navigationHistory.removeSubrange(indexAfterCurrent...)
-                }
-            }
-
-            // 添加新路径到历史（避免重复）
-            if navigationHistory.last != path {
-                navigationHistory.append(path)
-                // 限制历史记录长度
-                if navigationHistory.count > 50 {
-                    navigationHistory.removeFirst()
-                }
-            }
+            // 将当前路径推入后退栈
+            backStack.append(currentPath)
+            // 清空前进栈，因为这是新的导航
+            forwardStack.removeAll()
         }
 
         currentPath = path
@@ -78,7 +69,11 @@ class OSSFileService: ObservableObject {
         var fileList: [OSSFile] = []
 
         // 获取文件列表
-        let prefix = path.isEmpty ? "" : path
+        // 注意：OSS 的 prefix 需要以 / 结尾来表示目录
+        var prefix = path.isEmpty ? "" : path
+        if !prefix.isEmpty && !prefix.hasSuffix("/") {
+            prefix += "/"
+        }
         let delimiter = "/"
 
         let result = try await client.listObjectsV2(ListObjectsV2Request(
@@ -108,14 +103,15 @@ class OSSFileService: ObservableObject {
 
         // 处理目录（CommonPrefixes）
         if let commonPrefixes = result.commonPrefixes {
-            for prefix in commonPrefixes {
-                if let prefixValue = prefix.prefix {
-                    let dirName = prefixValue.replacingOccurrences(of: path, with: "")
+            for cp in commonPrefixes {
+                if let prefixValue = cp.prefix {
+                    // 移除当前路径前缀，获取相对目录名
+                    let relativePath = prefixValue.replacingOccurrences(of: prefix, with: "")
                         .trimmingCharacters(in: ["/"])
 
-                    if !dirName.isEmpty {
+                    if !relativePath.isEmpty {
                         let directory = OSSFile(
-                            key: prefixValue,
+                            key: prefixValue.trimmingCharacters(in: ["/"]),
                             size: 0,
                             lastModified: Date(),
                             eTag: "",
@@ -144,44 +140,40 @@ class OSSFileService: ObservableObject {
     }
 
     func goBack() async throws {
-        // 计算父目录路径
-        guard !currentPath.isEmpty else {
+        // 检查是否可以后退
+        guard let previousPath = backStack.popLast() else {
             throw OSSError.alreadyAtRoot
         }
 
-        let parentPath: String
-        if currentPath.contains("/") {
-            let trimmedPath = currentPath.trimmingCharacters(in: ["/"])
-            parentPath = trimmedPath.components(separatedBy: "/").dropLast().joined(separator: "/")
-        } else {
-            parentPath = ""
-        }
+        // 将当前路径推入前进栈
+        forwardStack.append(currentPath)
 
-        try await listFiles(at: parentPath)
+        // 切换到上一个路径
+        try await listFiles(at: previousPath, addToHistory: false)
     }
 
-    // 导航到历史记录中的指定路径
-    func navigateToHistory(index: Int) async throws {
-        guard index >= 0 && index < navigationHistory.count else {
+    func goForward() async throws {
+        // 检查是否可以前进
+        guard let nextPath = forwardStack.popLast() else {
+            // 没有可以前进的路径
             return
         }
-        let path = navigationHistory[index]
-        try await listFiles(at: path, addToHistory: false)
+
+        // 将当前路径推入后退栈
+        backStack.append(currentPath)
+
+        // 切换到下一个路径
+        try await listFiles(at: nextPath, addToHistory: false)
     }
 
     // 检查是否可以返回
     var canGoBack: Bool {
-        return !currentPath.isEmpty
+        return !backStack.isEmpty
     }
 
-    // 检查是否有历史记录
-    var hasHistory: Bool {
-        return !navigationHistory.isEmpty
-    }
-
-    // 获取当前在历史记录中的索引
-    var currentHistoryIndex: Int? {
-        return navigationHistory.firstIndex(of: currentPath)
+    // 检查是否可以前进
+    var canGoForward: Bool {
+        return !forwardStack.isEmpty
     }
 
     func createDirectory(name: String) async throws {
