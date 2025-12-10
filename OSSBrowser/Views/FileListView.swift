@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct FileListView: View {
     let files: [OSSFile]
@@ -21,6 +22,12 @@ struct FileListView: View {
     let onDownloadFile: (OSSFile) -> Void
     let onDownloadFolder: (OSSFile) -> Void
     let onDeleteFile: (OSSFile) -> Void
+    let onDropFile: (URL) -> Void?
+    let onDropFolder: (URL) -> Void?
+
+    private var hasUploadCallback: Bool {
+        return onDropFile != nil || onDropFolder != nil
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -105,6 +112,9 @@ struct FileListView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
+                        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                            handleDrop(providers: providers)
+                        }
                     }
                 }
             }
@@ -148,6 +158,32 @@ struct FileListView: View {
     private func handleDelete(_ file: OSSFile) {
         fileToDelete = file
         showingDeleteAlert = true
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            if provider.canLoadObject(ofClass: URL.self) {
+                provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url = url else { return }
+                    DispatchQueue.main.async {
+                        if self.hasUploadCallback {
+                            if self.isDirectory(at: url) {
+                                self.onDropFolder(url)
+                            } else {
+                                self.onDropFile(url)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true
+    }
+
+    private func isDirectory(at url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        return isDirectory.boolValue
     }
 }
 
@@ -234,6 +270,8 @@ struct FileRowView: View {
         onFileDoubleClick: { _ in },
         onDownloadFile: { _ in },
         onDownloadFolder: { _ in },
-        onDeleteFile: { _ in }
+        onDeleteFile: { _ in },
+        onDropFile: { _ in },
+        onDropFolder: { _ in }
     )
 }

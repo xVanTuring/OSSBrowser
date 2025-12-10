@@ -18,6 +18,7 @@ struct OSSFileBrowserContent: View {
     @State private var showingCreateFolder = false
     @State private var folderName = ""
     @State private var showingDownloadProgress = false
+    @State private var showingUploadProgress = false
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
@@ -40,7 +41,9 @@ struct OSSFileBrowserContent: View {
                 onFileDoubleClick: handleFileDoubleClick,
                 onDownloadFile: handleDownloadFile,
                 onDownloadFolder: handleDownloadFolder,
-                onDeleteFile: handleDeleteFile
+                onDeleteFile: handleDeleteFile,
+                onDropFile: handleDropFile,
+                onDropFolder: handleDropFolder
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -90,6 +93,9 @@ struct OSSFileBrowserContent: View {
         }
         .sheet(isPresented: $showingDownloadProgress) {
             DownloadProgressWindow()
+        }
+        .sheet(isPresented: $showingUploadProgress) {
+            UploadProgressWindow()
         }
         .toolbar {
             // 左侧导航按钮
@@ -163,6 +169,38 @@ struct OSSFileBrowserContent: View {
                         )
                 }
                 .help("查看下载进度")
+
+                // 上传进度按钮
+                Button(action: {
+                    showingUploadProgress = true
+                }) {
+                    Image(systemName: "arrow.up.circle")
+                        .font(.system(size: 14))
+                        .controlSize(.mini)
+                        .overlay(
+                            // 显示上传数量徽章
+                            Group {
+                                let activeCount = UploadManager.shared.uploadTasks.filter {
+                                    switch $0.status {
+                                    case .pending, .uploading:
+                                        return true
+                                    default:
+                                        return false
+                                    }
+                                }.count
+                                if activeCount > 0 {
+                                    Text("\(activeCount)")
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                                    .padding(2)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                                    .offset(x: 8, y: -8)
+                                }
+                            }
+                        )
+                }
+                .help("查看上传进度")
             }
         }
     }
@@ -207,6 +245,14 @@ struct OSSFileBrowserContent: View {
                 fileService.error = error
             }
         }
+    }
+
+    private func handleDropFile(_ url: URL) {
+        fileService.uploadFile(url)
+    }
+
+    private func handleDropFolder(_ url: URL) {
+        fileService.uploadFolder(url)
     }
 
     // MARK: - Create Folder

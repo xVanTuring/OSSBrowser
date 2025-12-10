@@ -240,4 +240,30 @@ class OSSFileService: ObservableObject {
             key: directoryKey
         ))
     }
+
+    // MARK: - Upload Methods
+
+    func uploadFile(_ url: URL) {
+        // 配置上传管理器
+        UploadManager.shared.configure(with: config, bucketName: bucketName)
+
+        // 构建远程路径
+        let remotePath = currentPath.isEmpty ? url.lastPathComponent : "\(currentPath)/\(url.lastPathComponent)"
+
+        UploadManager.shared.uploadFile(url, to: remotePath, in: bucketName)
+    }
+
+    func uploadFolder(_ url: URL) {
+        // 配置上传管理器
+        UploadManager.shared.configure(with: config, bucketName: bucketName)
+
+        // 构建远程路径
+        let remotePath = currentPath.isEmpty ? url.lastPathComponent : "\(currentPath)/\(url.lastPathComponent)"
+
+        UploadManager.shared.uploadFolder(url, to: remotePath, in: bucketName)
+    }
+
+    func getFullRemotePath(for fileName: String) -> String {
+        return currentPath.isEmpty ? fileName : "\(currentPath)/\(fileName)"
+    }
 }
