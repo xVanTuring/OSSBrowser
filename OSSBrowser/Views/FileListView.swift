@@ -61,7 +61,6 @@ struct FileListView: View {
                                 .padding(.trailing, 16)
                         }
                         .padding(.vertical, 8)
-                        .background(Color(NSColor.controlBackgroundColor))
 
                         Divider()
 

@@ -23,15 +23,17 @@ struct OSSBrowserApp: App {
         WindowGroup(for: OSSConfiguration.self) { $config in
             if let config = config {
                 OSSBrowserContentView(config: config, ossService: OSSService())
-                    .frame(minWidth: 900, minHeight: 600)
+                    .frame(minWidth: 1200, minHeight: 800)
+
             } else {
                 Text("请从配置管理窗口打开 OSS 浏览器")
                     .foregroundColor(.secondary)
                     .frame(minWidth: 900, minHeight: 600)
             }
         }
+        
         .windowResizability(.contentSize)
-        .windowToolbarStyle(.unified)
+//        .windowToolbarStyle(.automatic)
         .defaultSize(width: 1200, height: 800)
         .handlesExternalEvents(matching: ["oss-browser"])
     }

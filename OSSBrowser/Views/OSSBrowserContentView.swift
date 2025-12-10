@@ -43,20 +43,6 @@ struct OSSBrowserContentView: View {
                         }
                     )
                     .navigationTitle(bucket.name)
-                    .toolbar {
-                        // 左侧导航按钮
-                        ToolbarItemGroup(placement: .navigation) {
-                            // 由 OSSFileBrowserContent 内部定义
-                        }
-
-                        // 中间路径导航（暂时跳过）
-                        // TODO: 添加路径导航
-
-                        // 右侧操作按钮
-                        ToolbarItemGroup(placement: .primaryAction) {
-                            // 由 OSSFileBrowserContent 内部定义
-                        }
-                    }
                 }
                 .id(bucket.id) // 添加 id 以确保在切换 bucket 时重新创建视图
                 .navigationSplitViewColumnWidth(min:500,ideal: 600)
@@ -87,7 +73,7 @@ struct OSSBrowserContentView: View {
         .navigationSplitViewStyle(.prominentDetail)
         .onAppear {
             loadBuckets()
-        }
+        }.toolbarBackground(.hidden, for: .windowToolbar)
     }
 
     private func loadBuckets() {
