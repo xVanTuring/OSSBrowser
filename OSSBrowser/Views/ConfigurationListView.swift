@@ -20,21 +20,30 @@ struct ConfigurationListView: View {
         NavigationSplitView {
             // 左侧配置列表
             List(configManager.configurations, id: \.id, selection: $selectedConfig) { config in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(config.name)
-                        .font(.headline)
-                    Text("Region: \(config.region)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(config.name)
+                            .font(.headline)
+                        Text("Region: \(config.region)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        selectedConfig = config
+                        openMainWindow()
+                    } label: {
+                        Image(systemName: "arrow.right")
+                    }
+                    .buttonStyle(.bordered)
+
+                    .buttonStyle(BorderlessButtonStyle())
+                    .help("打开 OSS 浏览器")
+
                 }
                 .tag(config)
-                .gesture(
-                    TapGesture(count: 2)
-                        .onEnded {
-                            selectedConfig = config
-                            openMainWindow()
-                        }
-                )
             }
             .navigationTitle("OSS 配置")
             .navigationSplitViewColumnWidth(min: 200, ideal: 250)
@@ -88,7 +97,7 @@ struct ConfigurationListView: View {
                         // 不做任何事，只是保持选中状态
                     }
                 )
-                .id(selectedConfig?.id) // 添加 id 以确保在切换配置时重新创建视图
+                .id(selectedConfig?.id)  // 添加 id 以确保在切换配置时重新创建视图
             } else {
                 // 空状态
                 VStack(spacing: 20) {
@@ -116,7 +125,7 @@ struct ConfigurationListView: View {
                     }
                 }
             }
-            Button("取消", role: .cancel) { }
+            Button("取消", role: .cancel) {}
         } message: {
             if let config = configToDelete {
                 Text("确定要删除配置 \"\(config.name)\" 吗？此操作无法撤销。")
