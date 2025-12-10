@@ -14,6 +14,11 @@ struct OSSBrowserContentView: View {
     @State private var selectedBucket: BucketItem?
     @State private var isLoading = true
 
+    // 文件状态信息
+    @State private var currentFileCount = 0
+    @State private var currentSelectedCount = 0
+    @State private var currentIsLoading = false
+
     var body: some View {
         NavigationSplitView {
             // 左侧边栏 - Bucket 列表
@@ -26,9 +31,35 @@ struct OSSBrowserContentView: View {
         } content: {
             // 中间内容区 - 文件列表
             if let bucket = selectedBucket {
-                OSSFileBrowserView(bucket: bucket, config: config)
-                    .id(bucket.id) // 添加 id 以确保在切换 bucket 时重新创建视图
-                    .navigationSplitViewColumnWidth(min:500,ideal: 600)
+                NavigationStack {
+                    OSSFileBrowserContent(
+                        bucket: bucket,
+                        config: config,
+                        onFileCountUpdate: { itemCount, selectedCount, isLoading in
+                            // 传递文件状态信息到详情面板
+                            currentFileCount = itemCount
+                            currentSelectedCount = selectedCount
+                            currentIsLoading = isLoading
+                        }
+                    )
+                    .navigationTitle(bucket.name)
+                    .toolbar {
+                        // 左侧导航按钮
+                        ToolbarItemGroup(placement: .navigation) {
+                            // 由 OSSFileBrowserContent 内部定义
+                        }
+
+                        // 中间路径导航（暂时跳过）
+                        // TODO: 添加路径导航
+
+                        // 右侧操作按钮
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            // 由 OSSFileBrowserContent 内部定义
+                        }
+                    }
+                }
+                .id(bucket.id) // 添加 id 以确保在切换 bucket 时重新创建视图
+                .navigationSplitViewColumnWidth(min:500,ideal: 600)
             } else {
                 ContentUnavailableView(
                     "选择一个 Bucket",
@@ -37,11 +68,16 @@ struct OSSBrowserContentView: View {
                 )
             }
         } detail: {
-            // 右侧详情区
+            // 右侧详情区 - 现在包含文件状态信息
             if let bucket = selectedBucket {
-                BucketDetailView(bucket: bucket)
-                    .frame(maxWidth: 300)
-                    .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+                BucketDetailView(
+                    bucket: bucket,
+                    fileCount: currentFileCount,
+                    selectedCount: currentSelectedCount,
+                    isLoading: currentIsLoading
+                )
+                .frame(maxWidth: 300)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
             } else {
                 Text("选择一个 Bucket 查看详情")
                     .foregroundColor(.secondary)

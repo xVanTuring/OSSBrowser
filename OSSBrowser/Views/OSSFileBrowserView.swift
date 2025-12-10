@@ -7,36 +7,26 @@
 
 import SwiftUI
 
-struct OSSFileBrowserView: View {
+// 文件浏览器内容 - 不包含工具栏
+struct OSSFileBrowserContent: View {
     let bucket: BucketItem
     let config: OSSConfiguration
+    let onFileCountUpdate: (Int, Int, Bool) -> Void
 
     @StateObject private var fileService: OSSFileService
     @State private var selectedFiles: Set<String> = []
     @State private var showingCreateFolder = false
+    @State private var folderName = ""
 
-    init(bucket: BucketItem, config: OSSConfiguration) {
+    init(bucket: BucketItem, config: OSSConfiguration, onFileCountUpdate: @escaping (Int, Int, Bool) -> Void) {
         self.bucket = bucket
         self.config = config
+        self.onFileCountUpdate = onFileCountUpdate
         self._fileService = StateObject(wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // 集成路径导航的工具栏
-            FileBrowserToolbar(
-                fileService: fileService,
-                onGoBack: goBack,
-                onGoForward: goForward,
-                onNavigate: navigateToPath,
-                onRefresh: refresh,
-                onCreateFolder: { showingCreateFolder = true }
-            )
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-
-            Divider()
-
             // 文件列表 - 使用最大高度确保占据可用空间
             FileListView(
                 files: fileService.files,
@@ -46,21 +36,21 @@ struct OSSFileBrowserView: View {
                 onFileDoubleClick: handleFileDoubleClick
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            // 状态栏
-            StatusBar(
-                itemCount: fileService.files.count,
-                selectedCount: selectedFiles.count,
-                isLoading: fileService.isLoading
-            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             Task {
                 try? await fileService.listFiles()
             }
+        }
+        .onChange(of: fileService.files.count) { _ in
+            onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
+        }
+        .onChange(of: selectedFiles.count) { _ in
+            onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
+        }
+        .onChange(of: fileService.isLoading) { _ in
+            onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
         }
         .alert("创建文件夹", isPresented: $showingCreateFolder) {
             TextField("文件夹名称", text: $folderName)
@@ -81,41 +71,52 @@ struct OSSFileBrowserView: View {
                 Text(error.localizedDescription)
             }
         }
+        .toolbar {
+            // 左侧导航按钮
+            ToolbarItemGroup(placement: .navigation) {
+                Button(action: {
+                    Task {
+                        try? await fileService.goBack()
+                    }
+                }) {
+                    Image(systemName: "chevron.left")
+                }
+                .disabled(!fileService.canGoBack || fileService.isLoading)
+                .help("返回上级目录")
+
+                Button(action: {
+                    Task {
+                        try? await fileService.goForward()
+                    }
+                }) {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(!fileService.canGoForward || fileService.isLoading)
+                .help("前进")
+            }
+
+            // 右侧操作按钮
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button(action: {
+                    Task {
+                        try? await fileService.listFiles(at: fileService.currentPath)
+                    }
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(fileService.isLoading)
+                .help("刷新")
+
+                Button(action: { showingCreateFolder = true }) {
+                    Image(systemName: "plus")
+                }
+                .disabled(fileService.isLoading)
+                .help("新建文件夹")
+            }
+        }
     }
 
     // MARK: - Actions
-    private func goBack() {
-        Task {
-            do {
-                try await fileService.goBack()
-            } catch {
-                fileService.error = error
-            }
-        }
-    }
-
-    private func goForward() {
-        Task {
-            do {
-                try await fileService.goForward()
-            } catch {
-                fileService.error = error
-            }
-        }
-    }
-
-    private func refresh() {
-        Task {
-            try? await fileService.listFiles(at: fileService.currentPath)
-        }
-    }
-
-    private func navigateToPath(_ path: String) {
-        Task {
-            try? await fileService.listFiles(at: path)
-        }
-    }
-
     private func handleFileSelect(_ file: OSSFile) {
         // 处理文件选择
         print("Selected file: \(file.name)")
@@ -132,7 +133,6 @@ struct OSSFileBrowserView: View {
     }
 
     // MARK: - Create Folder
-    @State private var folderName = ""
     private func createFolder() {
         guard !folderName.isEmpty else { return }
 
@@ -147,153 +147,10 @@ struct OSSFileBrowserView: View {
     }
 }
 
-// MARK: - File Browser Toolbar
-struct FileBrowserToolbar: View {
-    @ObservedObject var fileService: OSSFileService
-    let onGoBack: () -> Void
-    let onGoForward: () -> Void
-    let onNavigate: (String) -> Void
-    let onRefresh: () -> Void
-    let onCreateFolder: () -> Void
 
-    var canGoBack: Bool {
-        fileService.canGoBack
-    }
-
-    var canGoForward: Bool {
-        return fileService.canGoForward
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // 导航按钮组
-            HStack(spacing: 8) {
-                Button(action: onGoBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12))
-                        .frame(width: 16, height: 16)
-                }
-                .disabled(!canGoBack || fileService.isLoading)
-                .help("返回上级目录")
-
-                Button(action: onGoForward) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12))
-                        .frame(width: 16, height: 16)
-                }
-//                .controlSize(.mini)
-                .disabled(!canGoForward || fileService.isLoading)
-                .help("前进")
-            }
-
-            // 路径导航 - 可滚动
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    // 根路径
-                    Button("/") {
-                        onNavigate("")
-                    }
-                    .font(.caption)
-                    .buttonStyle(.plain)
-                    .foregroundColor(.blue)
-
-                    // 路径组件
-                    ForEach(pathComponents, id: \.self) { component in
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-
-                        Button(component) {
-                            let path = pathForComponent(component)
-                            onNavigate(path)
-                        }
-                        .font(.caption)
-                        .buttonStyle(.plain)
-                        .foregroundColor(.primary)
-                    }
-                }
-                .padding(.horizontal, 4)
-            }
-
-            Spacer()
-
-            // 操作按钮组
-            HStack(spacing: 8) {
-                Button(action: onRefresh) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12))
-                        .frame(width: 16, height: 16)
-                }
-                .controlSize(.regular)
-                .buttonStyle(.automatic)
-                .disabled(fileService.isLoading)
-                .help("刷新")
-
-                Button(action: onCreateFolder) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14))
-                        .frame(width: 16, height: 16)
-                }
-                .controlSize(.regular)
-                .buttonStyle(.automatic)
-                .disabled(fileService.isLoading)
-                .help("新建文件夹")
-            }
-        }
-    }
-
-    private var pathComponents: [String] {
-        return fileService.currentPath.components(separatedBy: "/").filter { !$0.isEmpty }
-    }
-
-    private func pathForComponent(_ component: String) -> String {
-        var path = ""
-        for comp in pathComponents {
-            path += comp + "/"
-            if comp == component {
-                break
-            }
-        }
-        return path
-    }
-}
-
-
-// MARK: - Status Bar
-struct StatusBar: View {
-    let itemCount: Int
-    let selectedCount: Int
-    let isLoading: Bool
-
-    var body: some View {
-        HStack {
-            if isLoading {
-                ProgressView()
-                    .scaleEffect(0.8)
-                Text("加载中...")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } else {
-                Text("\(itemCount) 个项目")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                if selectedCount > 0 {
-                    Text("· \(selectedCount) 个已选择")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal)
-        .padding(.vertical, 4)
-        .background(Color(NSColor.controlBackgroundColor))
-    }
-}
 
 #Preview {
-    OSSFileBrowserView(
+    OSSFileBrowserContent(
         bucket: BucketItem(
             name: "test-bucket",
             region: "cn-hangzhou",
@@ -305,6 +162,7 @@ struct StatusBar: View {
             accessKeyId: "",
             accessKeySecret: "",
             region: "cn-hangzhou"
-        )
+        ),
+        onFileCountUpdate: { _, _, _ in }
     )
 }
