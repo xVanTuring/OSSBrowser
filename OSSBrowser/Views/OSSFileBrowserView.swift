@@ -18,11 +18,15 @@ struct OSSFileBrowserContent: View {
     @State private var showingCreateFolder = false
     @State private var folderName = ""
 
-    init(bucket: BucketItem, config: OSSConfiguration, onFileCountUpdate: @escaping (Int, Int, Bool) -> Void) {
+    init(
+        bucket: BucketItem, config: OSSConfiguration,
+        onFileCountUpdate: @escaping (Int, Int, Bool) -> Void
+    ) {
         self.bucket = bucket
         self.config = config
         self.onFileCountUpdate = onFileCountUpdate
-        self._fileService = StateObject(wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
+        self._fileService = StateObject(
+            wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
     }
 
     var body: some View {
@@ -39,13 +43,13 @@ struct OSSFileBrowserContent: View {
                 try? await fileService.listFiles()
             }
         }
-        .onChange(of: fileService.files.count) { _ in
+        .onChange(of: fileService.files.count) {
             onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
         }
-        .onChange(of: selectedFiles.count) { _ in
+        .onChange(of: selectedFiles.count) {
             onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
         }
-        .onChange(of: fileService.isLoading) { _ in
+        .onChange(of: fileService.isLoading) {
             onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
         }
         .alert("创建文件夹", isPresented: $showingCreateFolder) {
@@ -54,7 +58,7 @@ struct OSSFileBrowserContent: View {
                 createFolder()
             }
             .disabled(folderName.isEmpty)
-            Button("取消", role: .cancel) { }
+            Button("取消", role: .cancel) {}
         } message: {
             Text("请输入文件夹名称")
         }
@@ -146,8 +150,6 @@ struct OSSFileBrowserContent: View {
         folderName = ""
     }
 }
-
-
 
 #Preview {
     OSSFileBrowserContent(

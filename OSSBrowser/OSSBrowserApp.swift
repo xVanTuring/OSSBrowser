@@ -31,7 +31,6 @@ struct OSSBrowserApp: App {
             }
         }
         .windowResizability(.contentSize)
-        .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1200, height: 800)
         .handlesExternalEvents(matching: ["oss-browser"])
