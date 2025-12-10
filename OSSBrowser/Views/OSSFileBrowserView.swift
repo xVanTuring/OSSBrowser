@@ -62,6 +62,14 @@ struct OSSFileBrowserContent: View {
             Task {
                 try? await fileService.listFiles()
             }
+
+            // 设置上传完成回调
+            UploadManager.shared.onUploadComplete = {
+                Task {
+                    // 上传完成后刷新当前目录
+                    try? await fileService.listFiles(at: fileService.currentPath)
+                }
+            }
         }
         .onChange(of: fileService.files.count) {
             onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)

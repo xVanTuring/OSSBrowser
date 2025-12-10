@@ -48,6 +48,9 @@ class UploadManager: ObservableObject {
     private var config: OSSConfiguration?
     private var bucketName: String?
 
+    // 上传完成回调
+    var onUploadComplete: (() -> Void)?
+
     // 当前上传任务
     @Published var uploadTasks: [UploadTask] = []
 
@@ -162,6 +165,9 @@ class UploadManager: ObservableObject {
                 task.status = .completed
                 task.progress = 1.0
                 print("Upload completed: \(task.fileName), RequestId: \(result.requestId)")
+
+                // 上传完成后触发回调
+                onUploadComplete?()
 
             } catch {
                 task.status = .failed(error)
