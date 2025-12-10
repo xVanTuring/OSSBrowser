@@ -23,21 +23,17 @@ struct OSSFileBrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 工具栏
+            // 集成路径导航的工具栏
             FileBrowserToolbar(
                 fileService: fileService,
                 onGoBack: goBack,
                 onGoForward: goForward,
+                onNavigate: navigateToPath,
                 onRefresh: refresh,
                 onCreateFolder: { showingCreateFolder = true }
             )
-
-            // 路径导航栏
-            PathNavigationView(
-                currentPath: fileService.currentPath,
-                onNavigate: navigateToPath
-            )
             .padding(.horizontal)
+            .padding(.vertical, 8)
 
             Divider()
 
@@ -162,6 +158,7 @@ struct FileBrowserToolbar: View {
     @ObservedObject var fileService: OSSFileService
     let onGoBack: () -> Void
     let onGoForward: () -> Void
+    let onNavigate: (String) -> Void
     let onRefresh: () -> Void
     let onCreateFolder: () -> Void
 
@@ -193,8 +190,34 @@ struct FileBrowserToolbar: View {
                 .help("前进")
             }
 
-            Divider()
-                .frame(height: 20)
+            // 路径导航 - 可滚动
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    // 根路径
+                    Button("/") {
+                        onNavigate("")
+                    }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundColor(.blue)
+
+                    // 路径组件
+                    ForEach(pathComponents, id: \.self) { component in
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+
+                        Button(component) {
+                            let path = pathForComponent(component)
+                            onNavigate(path)
+                        }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.primary)
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
 
             Spacer()
 
@@ -213,45 +236,10 @@ struct FileBrowserToolbar: View {
                 .help("新建文件夹")
             }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-    }
-}
-
-// MARK: - Path Navigation View
-struct PathNavigationView: View {
-    let currentPath: String
-    let onNavigate: (String) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                // 根路径
-                Button("/") {
-                    onNavigate("")
-                }
-                .font(.caption)
-                .buttonStyle(.plain)
-
-                // 路径组件
-                ForEach(pathComponents, id: \.self) { component in
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-
-                    Button(component) {
-                        onNavigate(pathForComponent(component))
-                    }
-                    .font(.caption)
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal)
-        }
     }
 
     private var pathComponents: [String] {
-        return currentPath.components(separatedBy: "/").filter { !$0.isEmpty }
+        return fileService.currentPath.components(separatedBy: "/").filter { !$0.isEmpty }
     }
 
     private func pathForComponent(_ component: String) -> String {
@@ -265,6 +253,7 @@ struct PathNavigationView: View {
         return path
     }
 }
+
 
 // MARK: - Status Bar
 struct StatusBar: View {
