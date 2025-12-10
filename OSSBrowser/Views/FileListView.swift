@@ -16,6 +16,8 @@ struct FileListView: View {
     let isLoading: Bool
     let onFileSelect: (OSSFile) -> Void
     let onFileDoubleClick: (OSSFile) -> Void
+    let onDownloadFile: (OSSFile) -> Void
+    let onDownloadFolder: (OSSFile) -> Void
 
     var body: some View {
         GeometryReader { geometry in
@@ -74,7 +76,9 @@ struct FileListView: View {
                                     FileRowView(
                                         file: file,
                                         isSelected: selectedFile?.id == file.id,
-                                        onClick: { handleFileClick(file) }
+                                        onClick: { handleFileClick(file) },
+                                        onDownloadFile: onDownloadFile,
+                                        onDownloadFolder: onDownloadFolder
                                     )
                                     // .background(
                                     //     selectedFile?.id == file.id
@@ -129,6 +133,8 @@ struct FileRowView: View {
     let file: OSSFile
     let isSelected: Bool
     let onClick: () -> Void
+    let onDownloadFile: (OSSFile) -> Void
+    let onDownloadFolder: (OSSFile) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -158,6 +164,21 @@ struct FileRowView: View {
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
+        .contextMenu {
+            if file.isDirectory {
+                Button(action: {
+                    onDownloadFolder(file)
+                }) {
+                    Label("下载文件夹", systemImage: "arrow.down.circle")
+                }
+            } else {
+                Button(action: {
+                    onDownloadFile(file)
+                }) {
+                    Label("下载", systemImage: "arrow.down.circle")
+                }
+            }
+        }
     }
 }
 
@@ -177,6 +198,8 @@ struct FileRowView: View {
         selectedFiles: .constant([]),
         isLoading: false,
         onFileSelect: { _ in },
-        onFileDoubleClick: { _ in }
+        onFileDoubleClick: { _ in },
+        onDownloadFile: { _ in },
+        onDownloadFolder: { _ in }
     )
 }

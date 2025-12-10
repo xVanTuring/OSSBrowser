@@ -17,6 +17,7 @@ struct OSSFileBrowserContent: View {
     @State private var selectedFiles: Set<String> = []
     @State private var showingCreateFolder = false
     @State private var folderName = ""
+    @State private var showingDownloadProgress = false
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
@@ -36,7 +37,9 @@ struct OSSFileBrowserContent: View {
                 selectedFiles: $selectedFiles,
                 isLoading: fileService.isLoading,
                 onFileSelect: handleFileSelect,
-                onFileDoubleClick: handleFileDoubleClick
+                onFileDoubleClick: handleFileDoubleClick,
+                onDownloadFile: handleDownloadFile,
+                onDownloadFolder: handleDownloadFolder
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -84,6 +87,9 @@ struct OSSFileBrowserContent: View {
                 Text(error.localizedDescription)
             }
         }
+        .sheet(isPresented: $showingDownloadProgress) {
+            DownloadProgressWindow()
+        }
         .toolbar {
             // 左侧导航按钮
             ToolbarItemGroup(placement: .navigation) {
@@ -129,6 +135,44 @@ struct OSSFileBrowserContent: View {
                 }
                 .disabled(fileService.isLoading)
                 .help("新建文件夹")
+
+                // 下载进度按钮
+                Menu {
+                    Button(action: {
+                        showingDownloadProgress = true
+                    }) {
+                        Label("查看下载进度", systemImage: "list.bullet")
+                    }
+                    if !DownloadManager.shared.downloadTasks.isEmpty {
+                        Button(action: {
+                            DownloadManager.shared.removeCompletedTasks()
+                        }) {
+                            Label("清理已完成任务", systemImage: "trash")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 14))
+                        .controlSize(.mini)
+                        .overlay(
+                            // 显示下载数量徽章
+                            Group {
+                                let activeCount = DownloadManager.shared.downloadTasks.filter {
+                                    $0.status == .downloading || $0.status == .pending
+                                }.count
+                                if activeCount > 0 {
+                                    Text("\(activeCount)")
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                                    .padding(2)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                                    .offset(x: 8, y: -8)
+                                }
+                            }
+                        )
+                }
+                .help("下载任务")
             }
         }
     }
@@ -147,6 +191,20 @@ struct OSSFileBrowserContent: View {
         } else {
             // TODO: 处理文件打开
         }
+    }
+
+    private func handleDownloadFile(_ file: OSSFile) {
+        // 配置下载管理器
+        DownloadManager.shared.configure(with: config)
+        // 下载单个文件
+        DownloadManager.shared.downloadFile(file, from: bucket.name)
+    }
+
+    private func handleDownloadFolder(_ folder: OSSFile) {
+        // 配置下载管理器
+        DownloadManager.shared.configure(with: config)
+        // 下载整个文件夹
+        DownloadManager.shared.downloadFolder(folder, from: bucket.name, files: fileService.files)
     }
 
     // MARK: - Create Folder
