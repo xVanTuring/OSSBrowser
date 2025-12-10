@@ -76,7 +76,7 @@ struct PathNavigationView: View {
         }
         .frame(height: 32)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.8))
-        .border(Color(NSColor.separatorColor), width: 0.5)
+//        .border(Color(NSColor.separatorColor), width: 0.5)
     }
 
     // 将路径分割成组件

@@ -12,8 +12,6 @@ struct OSSFileBrowserContent: View {
     let bucket: BucketItem
     let config: OSSConfiguration
     let onFileCountUpdate: (Int, Int, Bool) -> Void
-    let onPathChange: (String) -> Void
-    let onFileServiceReady: (OSSFileService) -> Void
 
     @StateObject private var fileService: OSSFileService
     @State private var selectedFiles: Set<String> = []
@@ -22,28 +20,37 @@ struct OSSFileBrowserContent: View {
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
-        onFileCountUpdate: @escaping (Int, Int, Bool) -> Void,
-        onPathChange: @escaping (String) -> Void,
-        onFileServiceReady: @escaping (OSSFileService) -> Void = { _ in }
+        onFileCountUpdate: @escaping (Int, Int, Bool) -> Void
     ) {
         self.bucket = bucket
         self.config = config
         self.onFileCountUpdate = onFileCountUpdate
-        self.onPathChange = onPathChange
-        self.onFileServiceReady = onFileServiceReady
         self._fileService = StateObject(
             wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
     }
 
     var body: some View {
-        FileListView(
-            files: fileService.files,
-            selectedFiles: $selectedFiles,
-            isLoading: fileService.isLoading,
-            onFileSelect: handleFileSelect,
-            onFileDoubleClick: handleFileDoubleClick
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            FileListView(
+                files: fileService.files,
+                selectedFiles: $selectedFiles,
+                isLoading: fileService.isLoading,
+                onFileSelect: handleFileSelect,
+                onFileDoubleClick: handleFileDoubleClick
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // 底部路径导航栏
+            PathNavigationView(
+                bucketName: bucket.name,
+                currentPath: fileService.currentPath,
+                onPathClick: { path in
+                    Task {
+                        try? await fileService.listFiles(at: path)
+                    }
+                }
+            )
+        }
         .onAppear {
             Task {
                 try? await fileService.listFiles()
@@ -57,13 +64,6 @@ struct OSSFileBrowserContent: View {
         }
         .onChange(of: fileService.isLoading) {
             onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
-        }
-        .onChange(of: fileService.currentPath) {
-            onPathChange(fileService.currentPath)
-        }
-        .onAppear {
-            onPathChange(fileService.currentPath)
-            onFileServiceReady(fileService)
         }
         .alert("创建文件夹", isPresented: $showingCreateFolder) {
             TextField("文件夹名称", text: $folderName)
@@ -178,7 +178,6 @@ struct OSSFileBrowserContent: View {
             accessKeySecret: "",
             region: "cn-hangzhou"
         ),
-        onFileCountUpdate: { _, _, _ in },
-        onPathChange: { _ in }
+        onFileCountUpdate: { _, _, _ in }
     )
 }
