@@ -84,7 +84,7 @@ struct ConfigurationEditPanel: View {
 
                         TextField("配置名称", text: $name)
                             .textFieldStyle(.roundedBorder)
-                            .onChange(of: name) { _ in markHasChanged() }
+                            .onChange(of: name) { markHasChanged() }
                     }
 
                     // 凭证信息
@@ -95,11 +95,11 @@ struct ConfigurationEditPanel: View {
                         VStack(spacing: 12) {
                             TextField("Access Key ID", text: $accessKeyId)
                                 .textFieldStyle(.roundedBorder)
-                                .onChange(of: accessKeyId) { _ in markHasChanged() }
+                                .onChange(of: accessKeyId) { markHasChanged() }
 
                             SecureField("Access Key Secret", text: $accessKeySecret)
                                 .textFieldStyle(.roundedBorder)
-                                .onChange(of: accessKeySecret) { _ in markHasChanged() }
+                                .onChange(of: accessKeySecret) { markHasChanged() }
                         }
                     }
 
@@ -128,15 +128,15 @@ struct ConfigurationEditPanel: View {
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .onChange(of: region) { _ in markHasChanged() }
+                        .onChange(of: region) { markHasChanged() }
 
                         Toggle("使用自定义 Endpoint", isOn: $useCustomEndpoint)
-                            .onChange(of: useCustomEndpoint) { _ in markHasChanged() }
+                            .onChange(of: useCustomEndpoint) { markHasChanged() }
 
                         if useCustomEndpoint {
                             TextField("Endpoint", text: $endpoint)
                                 .textFieldStyle(.roundedBorder)
-                                .onChange(of: endpoint) { _ in markHasChanged() }
+                                .onChange(of: endpoint) { markHasChanged() }
                         }
                     }
                 }
