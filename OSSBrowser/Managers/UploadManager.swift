@@ -120,7 +120,9 @@ class UploadManager: ObservableObject {
 
                 if !isDirectory {
                     let fileSize = Int64(resourceValues.fileSize ?? 0)
-                    let relativePath = fileURL.path.replacingOccurrences(of: url.path, with: "")
+                    // 获取相对于文件夹根目录的路径
+                    let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
+                    // 如果 remotePath 为空，使用相对路径；否则组合
                     let remoteFilePath = remotePath.isEmpty ? relativePath : "\(remotePath)/\(relativePath)"
 
                     let task = UploadTask(
@@ -142,8 +144,14 @@ class UploadManager: ObservableObject {
 
         uploadTasks.append(contentsOf: folderTasks)
 
-        // 开始处理队列
-        processQueue(client: client!, bucket: bucket)
+        // 将文件夹任务添加到上传队列
+        for task in folderTasks {
+            if activeUploads < maxConcurrentUploads {
+                startUpload(task, client: client!, bucket: bucket)
+            } else {
+                uploadQueue.append(task)
+            }
+        }
     }
 
     private func startUpload(_ task: UploadTask, client: Client, bucket: String) {
