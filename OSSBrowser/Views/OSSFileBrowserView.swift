@@ -43,6 +43,8 @@ struct OSSFileBrowserContent: View {
                 onDownloadFile: handleDownloadFile,
                 onDownloadFolder: handleDownloadFolder,
                 onDeleteFile: handleDeleteFile,
+                onDeleteMultiple: handleDeleteMultiple,
+                onDownloadMultiple: handleDownloadMultiple,
                 onDropFile: handleDropFile,
                 onDropFolder: handleDropFolder
             )
@@ -250,6 +252,22 @@ struct OSSFileBrowserContent: View {
                 try await fileService.deleteFile(file)
                 // 刷新文件列表
                 try? await fileService.listFiles(at: fileService.currentPath)
+                // 清空选择
+                selectedFiles.remove(file.id.uuidString)
+            } catch {
+                fileService.error = error
+            }
+        }
+    }
+
+    private func handleDeleteMultiple(_ files: [OSSFile]) {
+        Task {
+            do {
+                try await fileService.deleteFiles(files)
+                // 刷新文件列表
+                try? await fileService.listFiles(at: fileService.currentPath)
+                // 清空选择
+                selectedFiles.removeAll()
             } catch {
                 fileService.error = error
             }
@@ -262,6 +280,22 @@ struct OSSFileBrowserContent: View {
 
     private func handleDropFolder(_ url: URL) {
         fileService.uploadFolder(url)
+    }
+
+    private func handleDownloadMultiple(_ files: [OSSFile]) {
+        // 配置下载管理器
+        DownloadManager.shared.configure(with: config)
+
+        // 分别处理文件和文件夹
+        for file in files {
+            if file.isDirectory {
+                // 下载文件夹
+                DownloadManager.shared.downloadFolder(file, from: bucket.name, files: fileService.files)
+            } else {
+                // 下载文件
+                DownloadManager.shared.downloadFile(file, from: bucket.name)
+            }
+        }
     }
 
     // MARK: - Create Folder

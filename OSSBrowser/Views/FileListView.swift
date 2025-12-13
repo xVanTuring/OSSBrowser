@@ -15,18 +15,23 @@ struct FileListView: View {
     @State private var lastClickTime: Date = Date()
     @State private var lastClickedFile: String?
     @State private var showingDeleteAlert = false
+    @State private var filesToDelete: [OSSFile] = []
     @State private var fileToDelete: OSSFile?
+    @State private var isShiftPressed = false
+    @State private var isCommandPressed = false
     let isLoading: Bool
     let onFileSelect: (OSSFile) -> Void
     let onFileDoubleClick: (OSSFile) -> Void
     let onDownloadFile: (OSSFile) -> Void
     let onDownloadFolder: (OSSFile) -> Void
     let onDeleteFile: (OSSFile) -> Void
+    let onDeleteMultiple: ([OSSFile]) -> Void
+    let onDownloadMultiple: ([OSSFile]) -> Void
     let onDropFile: (URL) -> Void?
     let onDropFolder: (URL) -> Void?
 
     private var hasUploadCallback: Bool {
-        return onDropFile != nil || onDropFolder != nil
+        return onDropFile != nil && onDropFolder != nil
     }
 
     var body: some View {
@@ -85,29 +90,32 @@ struct FileListView: View {
                                     index, file in
                                     FileRowView(
                                         file: file,
-                                        isSelected: selectedFile?.id == file.id,
-                                        onClick: { handleFileClick(file) },
+                                        isSelected: selectedFiles.contains(file.id.uuidString),
+                                        selectedCount: selectedFiles.count,
+                                        onClick: { handleFileClick(file, at: index) },
                                         onDownloadFile: onDownloadFile,
                                         onDownloadFolder: onDownloadFolder,
-                                        onDelete: { handleDelete(file) }
+                                        onDelete: { handleDelete(file) },
+                                        onBatchDelete: { handleBatchDelete() },
+                                        onBatchDownload: { handleBatchDownload() }
                                     )
-                                    // .background(
-                                    //     selectedFile?.id == file.id
-                                    //         ? Color(NSColor.selectedContentBackgroundColor).opacity(
-                                    //             0.5) : Color.clear
-                                    // )
                                     .background(
                                         // 如果选中，则使用选中颜色，否则根据行号交替显示
-                                        selectedFile?.id == file.id
+                                        selectedFiles.contains(file.id.uuidString)
                                             ? Color(NSColor.selectedContentBackgroundColor).opacity(
                                                 0.5)
                                             : (index % 2 == 0
                                                 ? Color(Color.white.opacity(0.05))
                                                 : Color(NSColor.clear))
                                     )
-                                    .onTapGesture {
-                                        handleFileClick(file)
+                                    .onTapGesture { event in
+                                        handleFileClick(file, at: index)
                                     }
+                                    .simultaneousGesture(
+                                        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                                            .onChanged { _ in }
+                                            .onEnded { _ in }
+                                    )
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -120,39 +128,100 @@ struct FileListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            updateModifierKeys()
+        }
+        .onKeyPress { key in
+            if key.key == "a" && key.modifiers.contains(.command) {
+                selectAll()
+                return .handled
+            }
+            return .ignored
+        }
         .alert("确认删除", isPresented: $showingDeleteAlert) {
             Button("取消", role: .cancel) { }
             Button("删除", role: .destructive) {
-                if let fileToDelete = fileToDelete {
-                    onDeleteFile(fileToDelete)
+                if !filesToDelete.isEmpty {
+                    if filesToDelete.count == 1, let file = filesToDelete.first {
+                        onDeleteFile(file)
+                    } else {
+                        onDeleteMultiple(filesToDelete)
+                    }
                 }
             }
         } message: {
-            if let fileToDelete = fileToDelete {
-                Text(fileToDelete.isDirectory
-                    ? "确定要删除文件夹 \"\(fileToDelete.name)\" 吗？此操作将删除文件夹及其所有内容。"
-                    : "确定要删除文件 \"\(fileToDelete.name)\" 吗？")
+            if filesToDelete.count == 1, let file = filesToDelete.first {
+                Text(file.isDirectory
+                    ? "确定要删除文件夹 \"\(file.name)\" 吗？此操作将删除文件夹及其所有内容。"
+                    : "确定要删除文件 \"\(file.name)\" 吗？")
+            } else {
+                Text("确定要删除选中的 \(filesToDelete.count) 个项目吗？此操作不可撤销。")
             }
         }
     }
 
-    private func handleFileClick(_ file: OSSFile) {
+    private func handleFileClick(_ file: OSSFile, at index: Int) {
         let now = Date()
         let timeSinceLastClick = now.timeIntervalSince(lastClickTime)
 
+        // 更新修饰键状态
+        updateModifierKeys()
+
         // 检查是否是双击（在同一文件上，且间隔小于 0.5 秒）
-        if lastClickedFile == file.id.uuidString && timeSinceLastClick < 0.5 {
+        if lastClickedFile == file.id.uuidString && timeSinceLastClick < 0.5 && !isShiftPressed && !isCommandPressed {
             // 双击
             onFileDoubleClick(file)
         } else {
-            // 单击
+            // 处理多选
+            if isCommandPressed {
+                // Command + 点击：切换选中状态
+                if selectedFiles.contains(file.id.uuidString) {
+                    selectedFiles.remove(file.id.uuidString)
+                } else {
+                    selectedFiles.insert(file.id.uuidString)
+                }
+            } else if isShiftPressed && !selectedFiles.isEmpty {
+                // Shift + 点击：范围选择
+                if let lastClickedId = lastClickedFile,
+                   let lastIndex = files.firstIndex(where: { $0.id.uuidString == lastClickedId }) {
+                    let startIndex = min(lastIndex, index)
+                    let endIndex = max(lastIndex, index)
+
+                    // 清空之前的选择
+                    selectedFiles.removeAll()
+
+                    // 选择范围内的所有文件
+                    for i in startIndex...endIndex {
+                        selectedFiles.insert(files[i].id.uuidString)
+                    }
+                }
+            } else {
+                // 普通单击：单选
+                selectedFiles = [file.id.uuidString]
+            }
+
+            // 更新当前文件和回调
             selectedFile = file
-            selectedFiles = [file.id.uuidString]
-            onFileSelect(file)
+            if selectedFiles.count == 1 {
+                onFileSelect(file)
+            }
         }
 
         lastClickTime = now
         lastClickedFile = file.id.uuidString
+    }
+
+    private func updateModifierKeys() {
+        let flags = NSEvent.modifierFlags
+        isShiftPressed = flags.contains(.shift)
+        isCommandPressed = flags.contains(.command)
+    }
+
+    private func selectAll() {
+        selectedFiles.removeAll()
+        for file in files {
+            selectedFiles.insert(file.id.uuidString)
+        }
     }
 
     private func handleDelete(_ file: OSSFile) {
@@ -160,10 +229,20 @@ struct FileListView: View {
         showingDeleteAlert = true
     }
 
+    private func handleBatchDelete() {
+        filesToDelete = files.filter { selectedFiles.contains($0.id.uuidString) }
+        showingDeleteAlert = true
+    }
+
+    private func handleBatchDownload() {
+        let selectedFilesList = files.filter { selectedFiles.contains($0.id.uuidString) }
+        onDownloadMultiple(selectedFilesList)
+    }
+
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         for provider in providers {
             if provider.canLoadObject(ofClass: URL.self) {
-                provider.loadObject(ofClass: URL.self) { url, _ in
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url = url else { return }
                     DispatchQueue.main.async {
                         if self.hasUploadCallback {
@@ -191,10 +270,13 @@ struct FileListView: View {
 struct FileRowView: View {
     let file: OSSFile
     let isSelected: Bool
+    let selectedCount: Int
     let onClick: () -> Void
     let onDownloadFile: (OSSFile) -> Void
     let onDownloadFolder: (OSSFile) -> Void
     let onDelete: () -> Void
+    let onBatchDelete: () -> Void
+    let onBatchDownload: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -225,28 +307,47 @@ struct FileRowView: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .contextMenu {
-            if file.isDirectory {
+            if selectedCount > 1 {
+                // 多选时的菜单
                 Button(action: {
-                    onDownloadFolder(file)
+                    onBatchDownload()
                 }) {
-                    Label("下载文件夹", systemImage: "arrow.down.circle")
+                    Label("下载选中项 (\(selectedCount))", systemImage: "arrow.down.circle")
                 }
+
+                Divider()
+
+                Button(action: {
+                    onBatchDelete()
+                }) {
+                    Label("删除选中项", systemImage: "trash")
+                }
+                .foregroundColor(.red)
             } else {
-                Button(action: {
-                    onDownloadFile(file)
-                }) {
-                    Label("下载", systemImage: "arrow.down.circle")
+                // 单选时的菜单
+                if file.isDirectory {
+                    Button(action: {
+                        onDownloadFolder(file)
+                    }) {
+                        Label("下载文件夹", systemImage: "arrow.down.circle")
+                    }
+                } else {
+                    Button(action: {
+                        onDownloadFile(file)
+                    }) {
+                        Label("下载", systemImage: "arrow.down.circle")
+                    }
                 }
-            }
 
-            Divider()
+                Divider()
 
-            Button(action: {
-                onDelete()
-            }) {
-                Label("删除", systemImage: "trash")
+                Button(action: {
+                    onDelete()
+                }) {
+                    Label("删除", systemImage: "trash")
+                }
+                .foregroundColor(.red)
             }
-            .foregroundColor(.red)
         }
     }
 }
@@ -271,6 +372,8 @@ struct FileRowView: View {
         onDownloadFile: { _ in },
         onDownloadFolder: { _ in },
         onDeleteFile: { _ in },
+        onDeleteMultiple: { _ in },
+        onDownloadMultiple: { _ in },
         onDropFile: { _ in },
         onDropFolder: { _ in }
     )

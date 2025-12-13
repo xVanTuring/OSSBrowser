@@ -212,6 +212,27 @@ class OSSFileService: ObservableObject {
         }
     }
 
+    func deleteFiles(_ files: [OSSFile]) async throws {
+        guard let client = client else {
+            throw OSSError.clientNotInitialized
+        }
+
+        // 批量删除文件
+        for file in files {
+            if file.isDirectory {
+                // 删除文件夹 - 需要删除所有子文件和子文件夹
+                try await deleteDirectory(file.key)
+            } else {
+                // 删除单个文件
+                let result = try await client.deleteObject(DeleteObjectRequest(
+                    bucket: bucketName,
+                    key: file.key
+                ))
+                print("Delete file result: \(result.requestId)")
+            }
+        }
+    }
+
     private func deleteDirectory(_ directoryKey: String) async throws {
         guard let client = client else {
             throw OSSError.clientNotInitialized
