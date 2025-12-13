@@ -163,13 +163,32 @@ class UploadManager: ObservableObject {
         Task { @MainActor in
             do {
                 let data = try Data(contentsOf: URL(fileURLWithPath: task.localPath))
+                var request = PutObjectRequest(
+                                    bucket: bucket,
+                                    key: task.remotePath,
+                                    body: .data(data)
+                                )
 
-                let result = try await client.putObject(PutObjectRequest(
-                    bucket: bucket,
-                    key: task.remotePath,
-                    body: .data(data)
-                ))
+                // 设置上传进度回调
+                request.progress = ProgressClosure{ [weak task] bytesIncrement, totalBytesTransferred, totalBytesExpected in
+                    guard let task = task else { return }
 
+                    // 计算上传进度百分比
+                    let progress = totalBytesExpected > 0 ? Double(totalBytesTransferred) / Double(totalBytesExpected) : 0.0
+
+                    // 在主线程更新UI
+                    Task { @MainActor in
+                        task.progress = progress
+                        task.status = .uploading(progress: progress)
+
+                        // 调试信息（可选）
+                        print("Upload progress for \(task.fileName): \(String(format: "%.1f%%", progress * 100))")
+                    }
+                }
+
+                let result = try await client.putObject(request)
+
+                // 确保最终状态为完成
                 task.status = .completed
                 task.progress = 1.0
                 print("Upload completed: \(task.fileName), RequestId: \(result.requestId)")
