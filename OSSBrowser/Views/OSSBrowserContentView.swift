@@ -30,7 +30,9 @@ struct OSSBrowserContentView: View {
                 selectedBucket: $selectedBucket,
                 isLoading: isLoading
             )
-            .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+            .frame(minWidth: 250, maxWidth: 250)
+            
+            .navigationSplitViewColumnWidth(min: 200, ideal: 250,max: 250)
         } detail: {
             // 中间内容区 - 文件列表
             if let bucket = selectedBucket {
@@ -64,8 +66,8 @@ struct OSSBrowserContentView: View {
                     selectedCount: currentSelectedCount,
                     isLoading: currentIsLoading
                 )
-                .frame(maxWidth: 300)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+                .frame(maxWidth: 250)
+                .navigationSplitViewColumnWidth(min: 150, ideal: 200, max: 250)
             } else {
                 Text("选择一个 Bucket 查看详情")
                     .foregroundColor(.secondary)
