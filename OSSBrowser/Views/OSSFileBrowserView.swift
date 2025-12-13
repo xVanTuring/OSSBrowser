@@ -14,6 +14,7 @@ struct OSSFileBrowserContent: View {
     let onFileCountUpdate: (Int, Int, Bool) -> Void
 
     @StateObject private var fileService: OSSFileService
+    @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var selectedFiles: Set<String> = []
     @State private var showingCreateFolder = false
     @State private var folderName = ""
@@ -161,7 +162,7 @@ struct OSSFileBrowserContent: View {
                         .overlay(
                             // 显示下载数量徽章
                             Group {
-                                let activeCount = DownloadManager.shared.downloadTasks.filter {
+                                let activeCount = downloadManager.downloadTasks.filter {
                                     $0.status == .downloading || $0.status == .pending
                                 }.count
                                 if activeCount > 0 {
