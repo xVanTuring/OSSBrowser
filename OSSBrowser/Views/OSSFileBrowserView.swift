@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AlibabaCloudOSS
 
 // 文件浏览器内容 - 不包含工具栏
 struct OSSFileBrowserContent: View {
@@ -47,7 +48,10 @@ struct OSSFileBrowserContent: View {
                 onDeleteMultiple: handleDeleteMultiple,
                 onDownloadMultiple: handleDownloadMultiple,
                 onDropFile: handleDropFile,
-                onDropFolder: handleDropFolder
+                onDropFolder: handleDropFolder,
+                onCopyPath: handleCopyPath,
+                onCopyURL: handleCopyURL,
+                onCopyPresignedURL: handleCopyPresignedURL
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -296,6 +300,69 @@ struct OSSFileBrowserContent: View {
                 // 下载文件
                 DownloadManager.shared.downloadFile(file, from: bucket.name)
             }
+        }
+    }
+
+    private func handleCopyPath(_ file: OSSFile) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(file.key, forType: .string)
+    }
+
+    private func handleCopyURL(_ file: OSSFile) {
+        let endpoint = config.endpoint ?? "https://oss-\(config.region).aliyuncs.com"
+        let url = "\(endpoint)/\(bucket.name)/\(file.key)"
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(url, forType: .string)
+    }
+
+    private func handleCopyPresignedURL(_ file: OSSFile) {
+        Task {
+            await generatePresignedURL(for: file)
+        }
+    }
+
+    @MainActor
+    private func generatePresignedURL(for file: OSSFile) async {
+        let ossConfig = Configuration.default()
+            .withCredentialsProvider(StaticCredentialsProvider(
+                accessKeyId: config.accessKeyId,
+                accessKeySecret: config.accessKeySecret
+            ))
+            .withRegion(config.region)
+
+        if let endpoint = config.endpoint {
+            ossConfig.withEndpoint(endpoint)
+        }
+
+        let client = Client(ossConfig)
+
+        do {
+            let presignResult = try await client.presign(
+                GetObjectRequest(
+                    bucket: bucket.name,
+                    key: file.key
+                ),
+                Date().addingTimeInterval(600) // 10分钟有效期
+            )
+
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(presignResult.url, forType: .string)
+
+            // 显示提示
+            let alert = NSAlert()
+            alert.messageText = "预签名地址已复制"
+            alert.informativeText = "有效期：10分钟"
+            alert.alertStyle = .informational
+            alert.runModal()
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "生成预签名地址失败"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .critical
+            alert.runModal()
         }
     }
 

@@ -29,9 +29,12 @@ struct FileListView: View {
     let onDownloadMultiple: ([OSSFile]) -> Void
     let onDropFile: (URL) -> Void?
     let onDropFolder: (URL) -> Void?
+    let onCopyPath: (OSSFile) -> Void
+    let onCopyURL: (OSSFile) -> Void
+    let onCopyPresignedURL: (OSSFile) -> Void
 
     private var hasUploadCallback: Bool {
-        return onDropFile != nil && onDropFolder != nil
+        return true
     }
 
     var body: some View {
@@ -97,7 +100,10 @@ struct FileListView: View {
                                         onDownloadFolder: onDownloadFolder,
                                         onDelete: { handleDelete(file) },
                                         onBatchDelete: { handleBatchDelete() },
-                                        onBatchDownload: { handleBatchDownload() }
+                                        onBatchDownload: { handleBatchDownload() },
+                                        onCopyPath: onCopyPath,
+                                        onCopyURL: onCopyURL,
+                                        onCopyPresignedURL: onCopyPresignedURL
                                     )
                                     .background(
                                         // 如果选中，则使用选中颜色，否则根据行号交替显示
@@ -277,6 +283,9 @@ struct FileRowView: View {
     let onDelete: () -> Void
     let onBatchDelete: () -> Void
     let onBatchDownload: () -> Void
+    let onCopyPath: (OSSFile) -> Void
+    let onCopyURL: (OSSFile) -> Void
+    let onCopyPresignedURL: (OSSFile) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -341,6 +350,30 @@ struct FileRowView: View {
 
                 Divider()
 
+                Menu("复制") {
+                    Button(action: {
+                        onCopyPath(file)
+                    }) {
+                        Label("复制文件路径", systemImage: "doc.text")
+                    }
+
+                    Button(action: {
+                        onCopyURL(file)
+                    }) {
+                        Label("复制文件地址", systemImage: "link")
+                    }
+
+                    if !file.isDirectory {
+                        Button(action: {
+                            onCopyPresignedURL(file)
+                        }) {
+                            Label("复制预签名地址", systemImage: "clock.badge.questionmark")
+                        }
+                    }
+                }
+
+                Divider()
+
                 Button(action: {
                     onDelete()
                 }) {
@@ -375,6 +408,9 @@ struct FileRowView: View {
         onDeleteMultiple: { _ in },
         onDownloadMultiple: { _ in },
         onDropFile: { _ in },
-        onDropFolder: { _ in }
+        onDropFolder: { _ in },
+        onCopyPath: { _ in },
+        onCopyURL: { _ in },
+        onCopyPresignedURL: { _ in }
     )
 }
