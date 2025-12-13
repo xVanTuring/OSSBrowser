@@ -245,11 +245,17 @@ class DownloadManager: NSObject, ObservableObject {
                             task.progress = 1.0
                             task.downloadedBytes = task.totalSize
                             self.sendNotification(title: "下载完成", body: "\(task.fileName) 下载完成")
+
+                            // 强制刷新 UI
+                            self.objectWillChange.send()
                         } catch {
                             task.error = error
                             task.status = .failed
                             task.endTime = Date()
                             self.sendNotification(title: "下载失败", body: "\(task.fileName) 保存失败: \(error.localizedDescription)")
+
+                            // 强制刷新 UI
+                            self.objectWillChange.send()
                         }
                     }
 

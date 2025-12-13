@@ -183,6 +183,9 @@ class UploadManager: ObservableObject {
             } catch {
                 task.status = .failed(error)
                 print("Upload failed: \(task.fileName), Error: \(error)")
+
+                // 强制刷新 UI
+                self.objectWillChange.send()
             }
 
             activeUploads -= 1
@@ -223,6 +226,9 @@ class UploadManager: ObservableObject {
         task.status = .completed
         task.progress = 1.0
         print("Upload completed: \(task.fileName), RequestId: \(result.requestId)")
+
+        // 强制刷新 UI
+        self.objectWillChange.send()
     }
 
     // 大文件分片上传
@@ -343,6 +349,9 @@ class UploadManager: ObservableObject {
         task.status = .completed
         task.progress = 1.0
         print("Multipart upload completed: \(task.fileName)")
+
+        // 强制刷新 UI
+        self.objectWillChange.send()
     }
 
     private func processQueue(client: Client, bucket: String) {
