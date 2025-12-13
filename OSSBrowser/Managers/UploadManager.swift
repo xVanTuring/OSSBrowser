@@ -59,6 +59,14 @@ class UploadManager: ObservableObject {
     private var activeUploads = 0
     private var uploadQueue: [UploadTask] = []
 
+    // 分片上传配置
+    private let multipartThreshold: Int64 = 100 * 1024 * 1024 // 100MB
+    private let partSize: Int64 = 100 * 1024 * 1024 // 10MB per part
+    private let maxPartRetryAttempts = 3 // 每个分片最大重试次数
+
+    // 存储分片上传的 uploadId
+    private var multipartUploadIds: [String: String] = [:]
+
     private init() {}
 
     func configure(with config: OSSConfiguration, bucketName: String) {
@@ -162,36 +170,12 @@ class UploadManager: ObservableObject {
 
         Task { @MainActor in
             do {
-                let data = try Data(contentsOf: URL(fileURLWithPath: task.localPath))
-                var request = PutObjectRequest(
-                                    bucket: bucket,
-                                    key: task.remotePath,
-                                    body: .data(data)
-                                )
-
-                // 设置上传进度回调
-                request.progress = ProgressClosure{ [weak task] bytesIncrement, totalBytesTransferred, totalBytesExpected in
-                    guard let task = task else { return }
-
-                    // 计算上传进度百分比
-                    let progress = totalBytesExpected > 0 ? Double(totalBytesTransferred) / Double(totalBytesExpected) : 0.0
-
-                    // 在主线程更新UI
-                    Task { @MainActor in
-                        task.progress = progress
-                        task.status = .uploading(progress: progress)
-
-                        // 调试信息（可选）
-                        print("Upload progress for \(task.fileName): \(String(format: "%.1f%%", progress * 100))")
-                    }
+                // 根据文件大小选择上传方式
+                if task.fileSize >= multipartThreshold {
+                    try await uploadLargeFile(task: task, client: client, bucket: bucket)
+                } else {
+                    try await uploadSmallFile(task: task, client: client, bucket: bucket)
                 }
-
-                let result = try await client.putObject(request)
-
-                // 确保最终状态为完成
-                task.status = .completed
-                task.progress = 1.0
-                print("Upload completed: \(task.fileName), RequestId: \(result.requestId)")
 
                 // 上传完成后触发回调
                 onUploadComplete?()
@@ -209,6 +193,156 @@ class UploadManager: ObservableObject {
                 startUpload(nextTask, client: client, bucket: bucket)
             }
         }
+    }
+
+    // 小文件直接上传
+    private func uploadSmallFile(task: UploadTask, client: Client, bucket: String) async throws {
+        let data = try Data(contentsOf: URL(fileURLWithPath: task.localPath))
+        var request = PutObjectRequest(
+            bucket: bucket,
+            key: task.remotePath,
+            body: .data(data)
+        )
+
+        // 设置上传进度回调
+        request.progress = ProgressClosure{ [weak task] bytesIncrement, totalBytesTransferred, totalBytesExpected in
+            guard let task = task else { return }
+
+            let progress = totalBytesExpected > 0 ? Double(totalBytesTransferred) / Double(totalBytesExpected) : 0.0
+
+            Task { @MainActor in
+                task.progress = progress
+                task.status = .uploading(progress: progress)
+                print("Upload progress for \(task.fileName): \(String(format: "%.1f%%", progress * 100))")
+            }
+        }
+
+        let result = try await client.putObject(request)
+
+        // 确保最终状态为完成
+        task.status = .completed
+        task.progress = 1.0
+        print("Upload completed: \(task.fileName), RequestId: \(result.requestId)")
+    }
+
+    // 大文件分片上传
+    private func uploadLargeFile(task: UploadTask, client: Client, bucket: String) async throws {
+        print("Starting multipart upload for \(task.fileName) (\(ByteCountFormatter.string(fromByteCount: task.fileSize, countStyle: .file)))")
+
+        // 1. 初始化分片上传
+        let initResult = try await client.initiateMultipartUpload(
+            InitiateMultipartUploadRequest(
+                bucket: bucket,
+                key: task.remotePath
+            )
+        )
+
+        let uploadId = initResult.uploadId
+        multipartUploadIds[task.id.uuidString] = uploadId
+
+        // 2. 计算分片数量
+        let partCount = Int((task.fileSize + partSize - 1) / partSize)
+        var parts: [UploadPart] = []
+        var uploadedBytes: Int64 = 0
+
+        // 3. 打开文件并准备上传分片
+        guard let fileHandle = FileHandle(forReadingAtPath: task.localPath) else {
+            throw NSError(domain: "UploadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Cannot open file for reading"])
+        }
+
+        defer {
+            fileHandle.closeFile()
+        }
+
+        // 4. 顺序上传分片（带重试机制）
+        for partNumber in 1...partCount {
+            var uploadSuccess = false
+            var lastError: Error?
+
+            // 读取分片数据（只需要读取一次）
+            let offset = Int64((partNumber - 1)) * self.partSize
+            fileHandle.seek(toFileOffset: UInt64(offset))
+            let currentPartSize = min(self.partSize, task.fileSize - offset)
+            let partData = fileHandle.readData(ofLength: Int(currentPartSize))
+
+            // 重试循环
+            for attempt in 1...maxPartRetryAttempts {
+                do {
+                    print("Uploading part \(partNumber) of \(task.fileName) (attempt \(attempt)/\(maxPartRetryAttempts))")
+
+                    // 上传分片
+                    let uploadPartResult = try await client.uploadPart(
+                        UploadPartRequest(
+                            bucket: bucket,
+                            key: task.remotePath,
+                            partNumber: partNumber,
+                            uploadId: uploadId,
+                            body: .data(partData)
+                        )
+                    )
+
+                    let part = UploadPart(
+                        etag: uploadPartResult.etag,
+                        partNumber: partNumber
+                    )
+
+                    parts.append(part)
+                    uploadedBytes += currentPartSize
+                    uploadSuccess = true
+
+                    // 更新进度
+                    let progress = Double(partNumber) / Double(partCount)
+                    Task { @MainActor in
+                        task.progress = progress
+                        task.status = .uploading(progress: progress)
+                        print("Multipart upload progress for \(task.fileName): \(String(format: "%.1f%%", progress * 100)) (\(partNumber)/\(partCount) parts)")
+                    }
+
+                    break // 成功则退出重试循环
+
+                } catch {
+                    lastError = error
+                    print("Upload part \(partNumber) failed (attempt \(attempt)/\(maxPartRetryAttempts)): \(error)")
+
+                    if attempt < maxPartRetryAttempts {
+                        // 等待一段时间再重试（指数退避）
+                        let delay = pow(2.0, Double(attempt - 1)) // 1s, 2s, 4s
+                        print("Retrying part \(partNumber) after \(delay) seconds...")
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    }
+                }
+            }
+
+            // 如果所有重试都失败，抛出错误
+            if !uploadSuccess {
+                let errorMessage = "Part \(partNumber) upload failed after \(maxPartRetryAttempts) attempts"
+                print("\(errorMessage): \(lastError?.localizedDescription ?? "Unknown error")")
+                throw NSError(domain: "UploadError", code: -2, userInfo: [
+                    NSLocalizedDescriptionKey: errorMessage,
+                    NSUnderlyingErrorKey: lastError as Any
+                ])
+            }
+        }
+
+        // 5. 完成分片上传
+        parts.sort { ($0.partNumber ?? 0) < ($1.partNumber ?? 0) }
+
+        let _ = try await client.completeMultipartUpload(
+            CompleteMultipartUploadRequest(
+                bucket: bucket,
+                key: task.remotePath,
+                uploadId: uploadId,
+                completeMultipartUpload: CompleteMultipartUpload(parts: parts)
+            )
+        )
+
+        // 清理 uploadId
+        multipartUploadIds.removeValue(forKey: task.id.uuidString)
+
+        // 确保最终状态为完成
+        task.status = .completed
+        task.progress = 1.0
+        print("Multipart upload completed: \(task.fileName)")
     }
 
     private func processQueue(client: Client, bucket: String) {
@@ -239,6 +373,32 @@ class UploadManager: ObservableObject {
         } else {
             uploadQueue.append(task)
         }
+    }
+
+    // 取消上传任务
+    func cancelUpload(_ task: UploadTask) async {
+        guard let client = client, let bucket = bucketName else { return }
+
+        // 如果是分片上传，需要取消 uploadId
+        if let uploadId = multipartUploadIds[task.id.uuidString] {
+            do {
+                let _ = try await client.abortMultipartUpload(
+                    AbortMultipartUploadRequest(
+                        bucket: bucket,
+                        key: task.remotePath,
+                        uploadId: uploadId
+                    )
+                )
+                multipartUploadIds.removeValue(forKey: task.id.uuidString)
+                print("Multipart upload cancelled for \(task.fileName)")
+            } catch {
+                print("Failed to abort multipart upload: \(error)")
+            }
+        }
+
+        // 从队列中移除
+        uploadTasks.removeAll { $0.id == task.id }
+        uploadQueue.removeAll { $0.id == task.id }
     }
 
     // 获取上传进度统计
