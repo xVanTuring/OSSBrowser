@@ -285,6 +285,29 @@ func main() async throws {
     print("PutObject done, StatusCode:\(result.statusCode), RequestId:\(result.requestId).")
 }
 ```
+#### 预签名示例
+```swift
+static func presignGetObject(client: Client, bucket: String, key: String) async throws {
+    
+    let result = try await client.presign(
+        GetObjectRequest(
+            bucket: bucket,
+            key: key
+        )，
+        Date().addingTimeInterval(3600) // 过期时间 
+    )
+    print("presign result: \n\(result)")
+    
+    var urlRequest = URLRequest(url: URL(string: result.url)!)
+    urlRequest.httpMethod = result.method
+    for (key, value) in result.signedHeaders ?? [:] {
+        urlRequest.addValue(value, forHTTPHeaderField: key)
+    }
+    let (_, response) = try await URLSession.shared.data(for: urlRequest)
+    
+    print("response: \(response)")
+}
+```
 ## 更多示例
 请参看`Sample`目录
 

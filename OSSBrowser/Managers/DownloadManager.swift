@@ -11,17 +11,20 @@ import AlibabaCloudOSSExtension
 import UserNotifications
 import Combine
 
-@MainActor
-class DownloadManager: ObservableObject {
+class DownloadManager: NSObject, ObservableObject {
     static let shared = DownloadManager()
 
     @Published var downloadTasks: [DownloadTask] = []
     private var client: Client?
     private var activeDownloads: Set<UUID> = []
     private let maxConcurrentDownloads = 5
+    private var urlSession: URLSession?
+    private var downloadSessions: [UUID: URLSessionDownloadTask] = [:]
 
-    private init() {
+    private override init() {
+        super.init()
         requestNotificationPermission()
+        setupURLSession()
     }
 
     func configure(with config: OSSConfiguration) {
@@ -102,6 +105,12 @@ class DownloadManager: ObservableObject {
     func cancelDownload(_ taskId: UUID) {
         guard let task = downloadTasks.first(where: { $0.id == taskId }) else { return }
 
+        // 取消 URLSessionDownloadTask
+        if let downloadTask = downloadSessions[taskId] {
+            downloadTask.cancel()
+            downloadSessions.removeValue(forKey: taskId)
+        }
+
         task.status = .cancelled
         activeDownloads.remove(taskId)
         processQueue()
@@ -114,6 +123,12 @@ class DownloadManager: ObservableObject {
     }
 
     // MARK: - Private Methods
+
+    private func setupURLSession() {
+        let config = URLSessionConfiguration.default
+        config.allowsCellularAccess = true
+        urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }
 
     private func processQueue() {
         // 找到等待中的任务
@@ -136,22 +151,22 @@ class DownloadManager: ObservableObject {
 
         Task {
             do {
-                if task.totalSize > 100 * 1024 * 1024 { // 100MB
-                    try await downloadWithParts(client: client, task: task)
-                } else {
-                    try await downloadSingle(client: client, task: task)
+                // 生成预签名 URL
+                let presignResult = try await client.presign(
+                    GetObjectRequest(
+                        bucket: task.bucketName,
+                        key: task.key
+                    ),
+                    Date().addingTimeInterval(3600) // 1小时有效期
+                )
+
+                guard let url = URL(string: presignResult.url) else {
+                    throw URLError(.badURL)
                 }
 
-                task.status = .completed
-                task.endTime = Date()
-                task.progress = 1.0
-                task.downloadedBytes = task.totalSize
+                // 使用 URLSession 下载
+                await downloadWithURLSession(task: task, url: url, signedHeaders: presignResult.signedHeaders)
 
-                await MainActor.run {
-                    sendNotification(title: "下载完成", body: "\(task.fileName) 下载完成")
-                    activeDownloads.remove(task.id)
-                    processQueue()
-                }
             } catch {
                 task.error = error
                 task.status = .failed
@@ -166,57 +181,89 @@ class DownloadManager: ObservableObject {
         }
     }
 
-    private func downloadSingle(client: Client, task: DownloadTask) async throws {
-        // 确保目标目录存在
-        let parentDir = task.localURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+    private func downloadWithURLSession(task: DownloadTask, url: URL, signedHeaders: [String: String]?) async {
+        return await withCheckedContinuation { continuation in
+            guard let urlSession = urlSession else {
+                continuation.resume()
+                return
+            }
 
-        // 使用 client.getObjectToFile 直接下载到文件
-        var request = GetObjectRequest(bucket: task.bucketName, key: task.key)
-        request.progress = ProgressClosure { bytesIncrement, totalBytesTransferred, totalBytesExpected in
-            Task { @MainActor in
-                task.downloadedBytes = Int64(totalBytesTransferred)
-                if totalBytesExpected > 0 {
-                    task.progress = Double(totalBytesTransferred) / Double(totalBytesExpected)
+            // 确保目标目录存在
+            let parentDir = task.localURL.deletingLastPathComponent()
+            do {
+                try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            } catch {
+                Task { @MainActor in
+                    task.error = error
+                    task.status = .failed
+                    task.endTime = Date()
+                    self.sendNotification(title: "下载失败", body: "\(task.fileName) 下载失败: \(error.localizedDescription)")
+                    self.activeDownloads.remove(task.id)
+                    self.processQueue()
+                }
+                continuation.resume()
+                return
+            }
+
+            // 创建 URLRequest 并添加签名头部
+            var urlRequest = URLRequest(url: url)
+            for (key, value) in signedHeaders ?? [:] {
+                urlRequest.addValue(value, forHTTPHeaderField: key)
+            }
+
+            // 创建下载任务
+            let downloadTask = urlSession.downloadTask(with: urlRequest) { [weak self] tempURL, response, error in
+                guard let self = self else {
+                    continuation.resume()
+                    return
+                }
+
+                Task { @MainActor in
+                    // 清理会话记录
+                    self.downloadSessions.removeValue(forKey: task.id)
+
+                    if let error = error {
+                        // 检查是否是用户取消
+                        if (error as NSError).code == NSURLErrorCancelled {
+                            task.status = .cancelled
+                        } else {
+                            task.error = error
+                            task.status = .failed
+                            task.endTime = Date()
+                            self.sendNotification(title: "下载失败", body: "\(task.fileName) 下载失败: \(error.localizedDescription)")
+                        }
+                    } else if let tempURL = tempURL {
+                        do {
+                            // 移动临时文件到目标位置
+                            if FileManager.default.fileExists(atPath: task.localURL.path) {
+                                try FileManager.default.removeItem(at: task.localURL)
+                            }
+                            try FileManager.default.moveItem(at: tempURL, to: task.localURL)
+
+                            task.status = .completed
+                            task.endTime = Date()
+                            task.progress = 1.0
+                            task.downloadedBytes = task.totalSize
+                            self.sendNotification(title: "下载完成", body: "\(task.fileName) 下载完成")
+                        } catch {
+                            task.error = error
+                            task.status = .failed
+                            task.endTime = Date()
+                            self.sendNotification(title: "下载失败", body: "\(task.fileName) 保存失败: \(error.localizedDescription)")
+                        }
+                    }
+
+                    self.activeDownloads.remove(task.id)
+                    self.processQueue()
+                    continuation.resume()
                 }
             }
-        }
-        try await client.getObjectToFile(request, task.localURL)
 
-        await MainActor.run {
-            task.downloadedBytes = task.totalSize
-            task.progress = 1.0
-        }
-    }
+            // URLSessionDownloadTask 会自动监控进度
 
-    private func downloadWithParts(client: Client, task: DownloadTask) async throws {
-        // FIXME: 这里实际上SDK并没有处理分段下载！
-        // 确保目标目录存在
-        let parentDir = task.localURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-
-        // 使用 client.getObjectToFile 直接下载到文件（SDK会自动处理大文件）
-        var request = GetObjectRequest(bucket: task.bucketName, key: task.key)
-        request.progress = ProgressClosure { bytesIncrement, totalBytesTransferred, totalBytesExpected in
-            Task { @MainActor in
-                task.downloadedBytes = Int64(totalBytesTransferred)
-                if totalBytesExpected > 0 {
-                    task.progress = Double(totalBytesTransferred) / Double(totalBytesExpected)
-                }
-
-                // 计算当前完成的分片数（估算）
-                if task.totalParts > 0 {
-                    task.completedParts = min(Int(Double(totalBytesTransferred) / Double(task.partSize)) + 1, task.totalParts)
-                }
-            }
-        }
-        try await client.getObjectToFile(request, task.localURL)
-
-        // 更新进度
-        await MainActor.run {
-            task.downloadedBytes = task.totalSize
-            task.progress = 1.0
-            task.completedParts = task.totalParts
+            // 开始下载
+            downloadSessions[task.id] = downloadTask
+            downloadTask.resume()
         }
     }
 
@@ -232,5 +279,38 @@ class DownloadManager: ObservableObject {
 
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+}
+
+// MARK: - URLSessionDownloadDelegate
+extension DownloadManager: URLSessionDownloadDelegate {
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // 这个方法的实际处理在 downloadTask 的 completionHandler 中
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        // 错误处理也在 downloadTask 的 completionHandler 中
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        // 更新下载进度
+        Task { @MainActor in
+            // 找到对应的任务并更新进度
+            if let downloadTaskRecord = downloadTasks.first(where: { task in
+                downloadSessions[task.id] == downloadTask
+            }) {
+                downloadTaskRecord.downloadedBytes = totalBytesWritten
+                if totalBytesExpectedToWrite > 0 {
+                    downloadTaskRecord.progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+                }
+
+                // 下载速度由 downloadTaskRecord 的 downloadSpeed 计算属性自动计算
+
+                // 更新分片进度（估算）
+                if downloadTaskRecord.totalParts > 0 {
+                    downloadTaskRecord.completedParts = min(Int(Double(totalBytesWritten) / Double(downloadTaskRecord.partSize)) + 1, downloadTaskRecord.totalParts)
+                }
+            }
+        }
     }
 }
