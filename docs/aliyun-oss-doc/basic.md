@@ -198,6 +198,39 @@ func main() async throws {
 }
 ```
 
+#### 下载到内存带进度(Get Object)
+SDK有BUG，不生效
+```swift
+
+import AlibabaCloudOSS
+
+func main() async throws {
+    let region = "cn-hangzhou"
+    let bucket = "your bucket name"
+    let key = "your object name"
+
+    // Using the SDK's default configuration
+    // loading credentials values from the environment variables
+    let config = Configuration.default()
+        .withCredentialsProvider(EnvironmentCredentialsProvider())
+        .withRegion(region)
+    let client = Client(config)
+    var request = GetObjectRequest(
+        bucket: bucket,
+        key: key
+    )
+    request.progress = ProgressClosure { bytesSent, totalBytesSent, totalBytesExpectedToSend in
+        print(bytesSent, totalBytesSent, totalBytesExpectedToSend)
+    }
+    // Get data of object to memory
+    let result = try await client.getObject(
+
+    )
+    print("PutObject done, StatusCode:\(result.statusCode), RequestId:\(result.requestId).")
+}
+
+```
+
 #### 下载到本地文件
 ```swift
 import AlibabaCloudOSS
