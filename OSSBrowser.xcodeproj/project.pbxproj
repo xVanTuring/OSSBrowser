@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		33CB746B2EE85F8C0033ABAA /* AlibabaCloudOSS in Frameworks */ = {isa = PBXBuildFile; productRef = 33CB746A2EE85F8C0033ABAA /* AlibabaCloudOSS */; };
-		33CB746D2EE85F900033ABAA /* AlibabaCloudOSSExtension in Frameworks */ = {isa = PBXBuildFile; productRef = 33CB746C2EE85F900033ABAA /* AlibabaCloudOSSExtension */; };
+		3306D6E32EED19070076153A /* AlibabaCloudOSS in Frameworks */ = {isa = PBXBuildFile; productRef = 3306D6E22EED19070076153A /* AlibabaCloudOSS */; };
+		3306D6E52EED19070076153A /* AlibabaCloudOSSExtension in Frameworks */ = {isa = PBXBuildFile; productRef = 3306D6E42EED19070076153A /* AlibabaCloudOSSExtension */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,8 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				33CB746B2EE85F8C0033ABAA /* AlibabaCloudOSS in Frameworks */,
-				33CB746D2EE85F900033ABAA /* AlibabaCloudOSSExtension in Frameworks */,
+				3306D6E32EED19070076153A /* AlibabaCloudOSS in Frameworks */,
+				3306D6E52EED19070076153A /* AlibabaCloudOSSExtension in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,8 +80,8 @@
 			);
 			name = OSSBrowser;
 			packageProductDependencies = (
-				33CB746A2EE85F8C0033ABAA /* AlibabaCloudOSS */,
-				33CB746C2EE85F900033ABAA /* AlibabaCloudOSSExtension */,
+				3306D6E22EED19070076153A /* AlibabaCloudOSS */,
+				3306D6E42EED19070076153A /* AlibabaCloudOSSExtension */,
 			);
 			productName = OSSBrowser;
 			productReference = 338C94B42EE85123006E5F2A /* OSSBrowser.app */;
@@ -112,7 +112,7 @@
 			mainGroup = 338C94AB2EE85123006E5F2A;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				33CB74592EE85F570033ABAA /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */,
+				3306D6E12EED18510076153A /* XCLocalSwiftPackageReference "../alibabacloud-oss-swift-sdk-v2" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 338C94B52EE85123006E5F2A /* Products */;
@@ -382,26 +382,22 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		33CB74592EE85F570033ABAA /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "git@github.com:aliyun/alibabacloud-oss-swift-sdk-v2.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.2.0;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		3306D6E12EED18510076153A /* XCLocalSwiftPackageReference "../alibabacloud-oss-swift-sdk-v2" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../alibabacloud-oss-swift-sdk-v2";
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		33CB746A2EE85F8C0033ABAA /* AlibabaCloudOSS */ = {
+		3306D6E22EED19070076153A /* AlibabaCloudOSS */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 33CB74592EE85F570033ABAA /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */;
+			package = 3306D6E12EED18510076153A /* XCLocalSwiftPackageReference "../alibabacloud-oss-swift-sdk-v2" */;
 			productName = AlibabaCloudOSS;
 		};
-		33CB746C2EE85F900033ABAA /* AlibabaCloudOSSExtension */ = {
+		3306D6E42EED19070076153A /* AlibabaCloudOSSExtension */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 33CB74592EE85F570033ABAA /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */;
+			package = 3306D6E12EED18510076153A /* XCLocalSwiftPackageReference "../alibabacloud-oss-swift-sdk-v2" */;
 			productName = AlibabaCloudOSSExtension;
 		};
 /* End XCSwiftPackageProductDependency section */
