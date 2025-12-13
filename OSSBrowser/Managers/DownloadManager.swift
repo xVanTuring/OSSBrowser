@@ -172,7 +172,15 @@ class DownloadManager: ObservableObject {
         try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
 
         // 使用 client.getObjectToFile 直接下载到文件
-        let request = GetObjectRequest(bucket: task.bucketName, key: task.key)
+        var request = GetObjectRequest(bucket: task.bucketName, key: task.key)
+        request.progress = ProgressClosure { bytesIncrement, totalBytesTransferred, totalBytesExpected in
+            Task { @MainActor in
+                task.downloadedBytes = Int64(totalBytesTransferred)
+                if totalBytesExpected > 0 {
+                    task.progress = Double(totalBytesTransferred) / Double(totalBytesExpected)
+                }
+            }
+        }
         try await client.getObjectToFile(request, task.localURL)
 
         await MainActor.run {
@@ -182,12 +190,26 @@ class DownloadManager: ObservableObject {
     }
 
     private func downloadWithParts(client: Client, task: DownloadTask) async throws {
+        // FIXME: 这里实际上SDK并没有处理分段下载！
         // 确保目标目录存在
         let parentDir = task.localURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
 
         // 使用 client.getObjectToFile 直接下载到文件（SDK会自动处理大文件）
-        let request = GetObjectRequest(bucket: task.bucketName, key: task.key)
+        var request = GetObjectRequest(bucket: task.bucketName, key: task.key)
+        request.progress = ProgressClosure { bytesIncrement, totalBytesTransferred, totalBytesExpected in
+            Task { @MainActor in
+                task.downloadedBytes = Int64(totalBytesTransferred)
+                if totalBytesExpected > 0 {
+                    task.progress = Double(totalBytesTransferred) / Double(totalBytesExpected)
+                }
+
+                // 计算当前完成的分片数（估算）
+                if task.totalParts > 0 {
+                    task.completedParts = min(Int(Double(totalBytesTransferred) / Double(task.partSize)) + 1, task.totalParts)
+                }
+            }
+        }
         try await client.getObjectToFile(request, task.localURL)
 
         // 更新进度
