@@ -67,6 +67,7 @@ class OSSFileService: ObservableObject {
         }
 
         var fileList: [OSSFile] = []
+        var directorySet = Set<String>()
 
         // 获取文件列表
         // 注意：OSS 的 prefix 需要以 / 结尾来表示目录
@@ -76,49 +77,51 @@ class OSSFileService: ObservableObject {
         }
         let delimiter = "/"
 
-        let result = try await client.listObjectsV2(ListObjectsV2Request(
+        // 使用分页器获取所有文件
+        for try await result in client.listObjectsV2Paginator(ListObjectsV2Request(
             bucket: bucketName,
             delimiter: delimiter,
             prefix: prefix
-        ))
-
-        // 处理文件
-        if let objects = result.contents {
-            for object in objects {
-                let key = object.key ?? ""
-                // 跳过目录标记（以 / 结尾）
-                if !key.hasSuffix("/") && key != prefix {
-                    let file = OSSFile(
-                        key: key,
-                        size: Int64(object.size ?? 0),
-                        lastModified: object.lastModified ?? Date(),
-                        eTag: object.etag ?? "",
-                        storageClass: object.storageClass ?? "Standard",
-                        isDirectory: false
-                    )
-                    fileList.append(file)
+        )) {
+            // 处理文件
+            if let objects = result.contents {
+                for object in objects {
+                    let key = object.key ?? ""
+                    // 跳过目录标记（以 / 结尾）
+                    if !key.hasSuffix("/") && key != prefix {
+                        let file = OSSFile(
+                            key: key,
+                            size: Int64(object.size ?? 0),
+                            lastModified: object.lastModified ?? Date(),
+                            eTag: object.etag ?? "",
+                            storageClass: object.storageClass ?? "Standard",
+                            isDirectory: false
+                        )
+                        fileList.append(file)
+                    }
                 }
             }
-        }
 
-        // 处理目录（CommonPrefixes）
-        if let commonPrefixes = result.commonPrefixes {
-            for cp in commonPrefixes {
-                if let prefixValue = cp.prefix {
-                    // 移除当前路径前缀，获取相对目录名
-                    let relativePath = prefixValue.replacingOccurrences(of: prefix, with: "")
-                        .trimmingCharacters(in: ["/"])
+            // 处理目录（CommonPrefixes）
+            if let commonPrefixes = result.commonPrefixes {
+                for cp in commonPrefixes {
+                    if let prefixValue = cp.prefix {
+                        // 移除当前路径前缀，获取相对目录名
+                        let relativePath = prefixValue.replacingOccurrences(of: prefix, with: "")
+                            .trimmingCharacters(in: ["/"])
 
-                    if !relativePath.isEmpty {
-                        let directory = OSSFile(
-                            key: prefixValue.trimmingCharacters(in: ["/"]),
-                            size: 0,
-                            lastModified: Date(),
-                            eTag: "",
-                            storageClass: "",
-                            isDirectory: true
-                        )
-                        fileList.append(directory)
+                        if !relativePath.isEmpty && !directorySet.contains(prefixValue) {
+                            directorySet.insert(prefixValue)
+                            let directory = OSSFile(
+                                key: prefixValue.trimmingCharacters(in: ["/"]),
+                                size: 0,
+                                lastModified: Date(),
+                                eTag: "",
+                                storageClass: "",
+                                isDirectory: true
+                            )
+                            fileList.append(directory)
+                        }
                     }
                 }
             }
@@ -238,20 +241,20 @@ class OSSFileService: ObservableObject {
             throw OSSError.clientNotInitialized
         }
 
-        // 获取文件夹中的所有文件
-        let listResult = try await client.listObjectsV2(ListObjectsV2Request(
+        // 使用分页器获取文件夹中的所有文件
+        for try await result in client.listObjectsV2Paginator(ListObjectsV2Request(
             bucket: bucketName,
             prefix: directoryKey
-        ))
-
-        // 逐个删除所有文件
-        if let objects = listResult.contents {
-            for object in objects {
-                let result = try await client.deleteObject(DeleteObjectRequest(
-                    bucket: bucketName,
-                    key: object.key
-                ))
-                print("Delete object result: \(result.requestId)")
+        )) {
+            // 逐个删除所有文件
+            if let objects = result.contents {
+                for object in objects {
+                    let deleteResult = try await client.deleteObject(DeleteObjectRequest(
+                        bucket: bucketName,
+                        key: object.key
+                    ))
+                    print("Delete object result: \(deleteResult.requestId)")
+                }
             }
         }
 
