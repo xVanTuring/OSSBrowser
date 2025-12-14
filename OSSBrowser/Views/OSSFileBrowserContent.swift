@@ -7,6 +7,7 @@
 
 import AlibabaCloudOSS
 import SwiftUI
+import QuickLook
 
 // 文件浏览器内容 - 不包含工具栏
 struct OSSFileBrowserContent: View {
@@ -23,6 +24,8 @@ struct OSSFileBrowserContent: View {
     @State private var showingDownloadProgress = false
     @State private var showingUploadProgress = false
     @State private var fileToPreview: OSSFile?
+    @State private var previewURL: URL?
+    @State private var useQuickLook: Bool = false
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
@@ -54,7 +57,7 @@ struct OSSFileBrowserContent: View {
                 onCopyURL: handleCopyURL,
                 onCopyPresignedURL: handleCopyPresignedURL,
                 onRenameFile: handleRenameFile,
-                onPreview: {file in fileToPreview = file }
+                onPreview: handleFilePreview
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -154,6 +157,16 @@ struct OSSFileBrowserContent: View {
                 .disabled(fileService.isLoading)
                 .help("刷新")
 
+                // 预览模式切换按钮
+                Button(action: {
+                    useQuickLook.toggle()
+                }) {
+                    Image(systemName: useQuickLook ? "eye" : "doc.text.image")
+                        .font(.system(size: 14))
+                        .controlSize(.mini)
+                }
+                .help(useQuickLook ? "当前使用 QuickLook 预览，点击切换到传统预览" : "当前使用传统预览，点击切换到 QuickLook")
+
                 Button(action: { showingCreateFolder = true }) {
                     Image(systemName: "plus")
                         .font(.system(size: 14))
@@ -222,6 +235,7 @@ struct OSSFileBrowserContent: View {
                 .help("查看上传进度")
             }
         }
+        // FilePreviewWindow sheet (用于传统预览模式)
         .sheet(item: $fileToPreview) { file in
             FilePreviewWindow(
                 file: file,
@@ -229,6 +243,8 @@ struct OSSFileBrowserContent: View {
                 config: config
             )
         }
+        // QuickLook 预览 (用于 QuickLook 模式)
+        .quickLookPreview($previewURL)
     }
 
     // MARK: - Actions
@@ -386,6 +402,47 @@ struct OSSFileBrowserContent: View {
             } catch {
                 fileService.error = error
             }
+        }
+    }
+
+    private func handleFilePreview(_ file: OSSFile) {
+        if useQuickLook {
+            // 使用 QuickLook 预览
+            Task {
+                do {
+                    // 创建 OSS 客户端
+                    let ossConfig = Configuration.default()
+                        .withCredentialsProvider(
+                            StaticCredentialsProvider(
+                                accessKeyId: config.accessKeyId,
+                                accessKeySecret: config.accessKeySecret
+                            )
+                        )
+                        .withRegion(config.region)
+
+                    let client = Client(ossConfig)
+
+                    // 生成预签名URL，有效期1小时
+                    let presignResult = try await client.presign(
+                        GetObjectRequest(bucket: bucket.name, key: file.key),
+                        Date().addingTimeInterval(3600)
+                    )
+
+                    // 在主线程更新 UI
+                    await MainActor.run {
+                        let url = URL(string: presignResult.url)
+                        previewURL = url
+                    }
+                } catch {
+                    print("生成预签名URL失败: \(error)")
+                    await MainActor.run {
+                        fileService.error = error
+                    }
+                }
+            }
+        } else {
+            // 使用原有的 FilePreviewWindow
+            fileToPreview = file
         }
     }
 
