@@ -17,3 +17,16 @@
 
 ## TODO
 1. 文件上传不支持取消
+
+
+## SwiftUI 坑
+- Sheet显示可选内容时，尽量使用 `.sheet(item:)` 而不是一个布尔值控制
+```swift
+.sheet(item: $fileToPreview) { file in 
+           FilePreviewWindow(
+                file: file,
+                bucketName: bucket.name,
+                config: config
+            )
+        }
+```

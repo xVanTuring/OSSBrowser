@@ -11,6 +11,7 @@ struct FileKeyboardHandler {
     let files: [OSSFile]
     @Binding var selectedFiles: Set<String>
     let onBatchDelete: () -> Void
+    let onPreview: (OSSFile) -> Void
 
     func handleKeyPress(_ key: KeyPress) -> KeyPress.Result {
         // Command+A 全选
@@ -23,6 +24,15 @@ struct FileKeyboardHandler {
         if key.key == .delete {
             if !selectedFiles.isEmpty {
                 onBatchDelete()
+                return .handled
+            }
+        }
+        if key.key == .space {
+            // 如果只有一个文件被选中，打开预览
+            if selectedFiles.count == 1,
+               let fileId = selectedFiles.first,
+               let file = files.first(where: { $0.id == fileId }) {
+                onPreview(file)
                 return .handled
             }
         }

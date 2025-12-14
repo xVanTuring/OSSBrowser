@@ -5,8 +5,8 @@
 //  Created by xvan on 2025/12/9.
 //
 
-import SwiftUI
 import AlibabaCloudOSS
+import SwiftUI
 
 // 文件浏览器内容 - 不包含工具栏
 struct OSSFileBrowserContent: View {
@@ -22,6 +22,7 @@ struct OSSFileBrowserContent: View {
     @State private var folderName = ""
     @State private var showingDownloadProgress = false
     @State private var showingUploadProgress = false
+    @State private var fileToPreview: OSSFile?
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
@@ -52,7 +53,8 @@ struct OSSFileBrowserContent: View {
                 onCopyPath: handleCopyPath,
                 onCopyURL: handleCopyURL,
                 onCopyPresignedURL: handleCopyPresignedURL,
-                onRenameFile: handleRenameFile
+                onRenameFile: handleRenameFile,
+                onPreview: {file in fileToPreview = file }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -175,12 +177,12 @@ struct OSSFileBrowserContent: View {
                                 }.count
                                 if activeCount > 0 {
                                     Text("\(activeCount)")
-                                    .font(.caption2)
-                                    .foregroundColor(.white)
-                                    .padding(2)
-                                    .background(Color.red)
-                                    .clipShape(Circle())
-                                    .offset(x: 8, y: -8)
+                                        .font(.caption2)
+                                        .foregroundColor(.white)
+                                        .padding(2)
+                                        .background(Color.red)
+                                        .clipShape(Circle())
+                                        .offset(x: 8, y: -8)
                                 }
                             }
                         )
@@ -207,18 +209,25 @@ struct OSSFileBrowserContent: View {
                                 }.count
                                 if activeCount > 0 {
                                     Text("\(activeCount)")
-                                    .font(.caption2)
-                                    .foregroundColor(.white)
-                                    .padding(2)
-                                    .background(Color.red)
-                                    .clipShape(Circle())
-                                    .offset(x: 8, y: -8)
+                                        .font(.caption2)
+                                        .foregroundColor(.white)
+                                        .padding(2)
+                                        .background(Color.red)
+                                        .clipShape(Circle())
+                                        .offset(x: 8, y: -8)
                                 }
                             }
                         )
                 }
                 .help("查看上传进度")
             }
+        }
+        .sheet(item: $fileToPreview) { file in
+            FilePreviewWindow(
+                file: file,
+                bucketName: bucket.name,
+                config: config
+            )
         }
     }
 
@@ -296,7 +305,8 @@ struct OSSFileBrowserContent: View {
         for file in files {
             if file.isDirectory {
                 // 下载文件夹
-                DownloadManager.shared.downloadFolder(file, from: bucket.name, files: fileService.files)
+                DownloadManager.shared.downloadFolder(
+                    file, from: bucket.name, files: fileService.files)
             } else {
                 // 下载文件
                 DownloadManager.shared.downloadFile(file, from: bucket.name)
@@ -327,10 +337,12 @@ struct OSSFileBrowserContent: View {
     @MainActor
     private func generatePresignedURL(for file: OSSFile) async {
         let ossConfig = Configuration.default()
-            .withCredentialsProvider(StaticCredentialsProvider(
-                accessKeyId: config.accessKeyId,
-                accessKeySecret: config.accessKeySecret
-            ))
+            .withCredentialsProvider(
+                StaticCredentialsProvider(
+                    accessKeyId: config.accessKeyId,
+                    accessKeySecret: config.accessKeySecret
+                )
+            )
             .withRegion(config.region)
 
         if let endpoint = config.endpoint {
@@ -345,7 +357,7 @@ struct OSSFileBrowserContent: View {
                     bucket: bucket.name,
                     key: file.key
                 ),
-                Date().addingTimeInterval(600) // 10分钟有效期
+                Date().addingTimeInterval(600)  // 10分钟有效期
             )
 
             let pasteboard = NSPasteboard.general

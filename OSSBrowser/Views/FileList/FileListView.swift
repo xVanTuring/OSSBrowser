@@ -25,6 +25,7 @@ struct FileListView: View {
     let onCopyURL: (OSSFile) -> Void
     let onCopyPresignedURL: (OSSFile) -> Void
     let onRenameFile: (OSSFile, String) -> Void
+    let onPreview: (OSSFile) -> Void
 
     @State private var showingDeleteAlert = false
     @State private var filesToDelete: [OSSFile] = []
@@ -60,7 +61,8 @@ struct FileListView: View {
         FileKeyboardHandler(
             files: files,
             selectedFiles: $selectedFiles,
-            onBatchDelete: handleBatchDelete
+            onBatchDelete: handleBatchDelete,
+            onPreview: onPreview
         )
     }
 
@@ -197,6 +199,7 @@ struct FileListView: View {
         onCopyPath: { _ in },
         onCopyURL: { _ in },
         onCopyPresignedURL: { _ in },
-        onRenameFile: { _, _ in }
+        onRenameFile: { _, _ in },
+        onPreview: { _ in }
     )
 }
