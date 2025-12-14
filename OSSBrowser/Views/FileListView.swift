@@ -93,7 +93,7 @@ struct FileListView: View {
                                     index, file in
                                     FileRowView(
                                         file: file,
-                                        isSelected: selectedFiles.contains(file.id.uuidString),
+                                        isSelected: selectedFiles.contains(file.id),
                                         selectedCount: selectedFiles.count,
                                         onClick: { handleFileClick(file, at: index) },
                                         onDownloadFile: onDownloadFile,
@@ -107,7 +107,7 @@ struct FileListView: View {
                                     )
                                     .background(
                                         // 如果选中，则使用选中颜色，否则根据行号交替显示
-                                        selectedFiles.contains(file.id.uuidString)
+                                        selectedFiles.contains(file.id)
                                             ? Color(NSColor.selectedContentBackgroundColor).opacity(
                                                 0.5)
                                             : (index % 2 == 0
@@ -134,6 +134,8 @@ struct FileListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .focusable()
+        .focusEffectDisabled(true)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             updateModifierKeys()
         }
@@ -174,22 +176,22 @@ struct FileListView: View {
         updateModifierKeys()
 
         // 检查是否是双击（在同一文件上，且间隔小于 0.5 秒）
-        if lastClickedFile == file.id.uuidString && timeSinceLastClick < 0.5 && !isShiftPressed && !isCommandPressed {
+        if lastClickedFile == file.id && timeSinceLastClick < 0.5 && !isShiftPressed && !isCommandPressed {
             // 双击
             onFileDoubleClick(file)
         } else {
             // 处理多选
             if isCommandPressed {
                 // Command + 点击：切换选中状态
-                if selectedFiles.contains(file.id.uuidString) {
-                    selectedFiles.remove(file.id.uuidString)
+                if selectedFiles.contains(file.id) {
+                    selectedFiles.remove(file.id)
                 } else {
-                    selectedFiles.insert(file.id.uuidString)
+                    selectedFiles.insert(file.id)
                 }
             } else if isShiftPressed && !selectedFiles.isEmpty {
                 // Shift + 点击：范围选择
                 if let lastClickedId = lastClickedFile,
-                   let lastIndex = files.firstIndex(where: { $0.id.uuidString == lastClickedId }) {
+                   let lastIndex = files.firstIndex(where: { $0.id == lastClickedId }) {
                     let startIndex = min(lastIndex, index)
                     let endIndex = max(lastIndex, index)
 
@@ -198,12 +200,12 @@ struct FileListView: View {
 
                     // 选择范围内的所有文件
                     for i in startIndex...endIndex {
-                        selectedFiles.insert(files[i].id.uuidString)
+                        selectedFiles.insert(files[i].id)
                     }
                 }
             } else {
                 // 普通单击：单选
-                selectedFiles = [file.id.uuidString]
+                selectedFiles = [file.id]
             }
 
             // 更新当前文件和回调
@@ -214,7 +216,7 @@ struct FileListView: View {
         }
 
         lastClickTime = now
-        lastClickedFile = file.id.uuidString
+        lastClickedFile = file.id
     }
 
     private func updateModifierKeys() {
@@ -224,10 +226,9 @@ struct FileListView: View {
     }
 
     private func selectAll() {
-        selectedFiles.removeAll()
-        for file in files {
-            selectedFiles.insert(file.id.uuidString)
-        }
+        // 创建包含所有文件ID的新集合（现在使用稳定的key作为ID）
+        let allFileIds = Set(files.map { $0.id })
+        selectedFiles = allFileIds
     }
 
     private func handleDelete(_ file: OSSFile) {
@@ -236,12 +237,12 @@ struct FileListView: View {
     }
 
     private func handleBatchDelete() {
-        filesToDelete = files.filter { selectedFiles.contains($0.id.uuidString) }
+        filesToDelete = files.filter { selectedFiles.contains($0.id) }
         showingDeleteAlert = true
     }
 
     private func handleBatchDownload() {
-        let selectedFilesList = files.filter { selectedFiles.contains($0.id.uuidString) }
+        let selectedFilesList = files.filter { selectedFiles.contains($0.id) }
         onDownloadMultiple(selectedFilesList)
     }
 

@@ -8,7 +8,7 @@
 import Foundation
 
 struct OSSFile: Identifiable, Hashable {
-    let id = UUID()
+    var id: String { key } // 使用key作为稳定的ID
     let key: String
     let size: Int64
     let lastModified: Date

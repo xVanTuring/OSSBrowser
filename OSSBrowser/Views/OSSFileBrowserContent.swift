@@ -258,7 +258,7 @@ struct OSSFileBrowserContent: View {
                 // 刷新文件列表
                 try? await fileService.listFiles(at: fileService.currentPath)
                 // 清空选择
-                selectedFiles.remove(file.id.uuidString)
+                selectedFiles.remove(file.id)
             } catch {
                 fileService.error = error
             }
