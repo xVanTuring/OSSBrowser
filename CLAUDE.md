@@ -1,4 +1,5 @@
 
+- 软件只考虑支持 macos13 及以上版本
 ## 参考文档
 @docs/project-architecture.md
 @docs/aliyun-oss-doc/basic.md
