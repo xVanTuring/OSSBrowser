@@ -51,7 +51,8 @@ struct OSSFileBrowserContent: View {
                 onDropFolder: handleDropFolder,
                 onCopyPath: handleCopyPath,
                 onCopyURL: handleCopyURL,
-                onCopyPresignedURL: handleCopyPresignedURL
+                onCopyPresignedURL: handleCopyPresignedURL,
+                onRenameFile: handleRenameFile
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -363,6 +364,16 @@ struct OSSFileBrowserContent: View {
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .critical
             alert.runModal()
+        }
+    }
+
+    private func handleRenameFile(_ file: OSSFile, newName: String) {
+        Task {
+            do {
+                try await fileService.renameFile(file, newName: newName)
+            } catch {
+                fileService.error = error
+            }
         }
     }
 

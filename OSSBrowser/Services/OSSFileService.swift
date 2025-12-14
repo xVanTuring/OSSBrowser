@@ -290,4 +290,55 @@ class OSSFileService: ObservableObject {
     func getFullRemotePath(for fileName: String) -> String {
         return currentPath.isEmpty ? fileName : "\(currentPath)/\(fileName)"
     }
+
+    // MARK: - Rename Methods
+    func renameFile(_ file: OSSFile, newName: String) async throws {
+        guard let client = client else {
+            throw NSError(domain: "OSSFileService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Client not initialized"])
+        }
+
+        // 检查新名称是否有效
+        guard !newName.isEmpty && newName != file.name else {
+            throw NSError(domain: "OSSFileService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid new name"])
+        }
+        // FIXME： 错误实现
+        // // 构建新的完整路径
+        // let oldKey = file.key
+
+        // // 获取文件的目录路径
+        // let directoryPath = (oldKey as NSString).deletingLastPathComponent
+
+        // // 构建新路径
+        // let newKey: String
+        // if file.isDirectory {
+        //     // 如果是文件夹，确保新名称以 / 结尾
+        //     let folderName = newName.hasSuffix("/") ? newName : "\(newName)/"
+        //     newKey = directoryPath.isEmpty ? folderName : "\(directoryPath)/\(folderName)"
+        // } else {
+        //     // 如果是文件
+        //     newKey = directoryPath.isEmpty ? newName : "\(directoryPath)/\(newName)"
+        // }
+
+        // // 使用 OSS 的复制和删除操作来实现重命名
+        // // 1. 复制对象到新路径
+        // let copyResult = try await client.copyObject(CopyObjectRequest(
+        //     bucket: bucketName,
+        //     key: newKey,
+        //     sourceBucket: bucketName,
+        //     sourceKey: oldKey
+        // ))
+
+        // print("Copy object result: \(copyResult.requestId)")
+
+        // // 2. 删除原对象
+        // let deleteResult = try await client.deleteObject(DeleteObjectRequest(
+        //     bucket: bucketName,
+        //     key: oldKey
+        // ))
+
+        // print("Delete object result: \(deleteResult.requestId)")
+
+        // // 3. 刷新文件列表
+        // try await listFiles(at: currentPath, addToHistory: false)
+    }
 }

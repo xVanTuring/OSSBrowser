@@ -16,6 +16,9 @@ struct FileListView: View {
     @State private var showingDeleteAlert = false
     @State private var filesToDelete: [OSSFile] = []
     @State private var dropAreaActive = false
+    @State private var showingRenameAlert = false
+    @State private var fileToRename: OSSFile?
+    @State private var newFileName = ""
     let isLoading: Bool
     let onFileSelect: (OSSFile) -> Void
     let onFileDoubleClick: (OSSFile) -> Void
@@ -29,6 +32,7 @@ struct FileListView: View {
     let onCopyPath: (OSSFile) -> Void
     let onCopyURL: (OSSFile) -> Void
     let onCopyPresignedURL: (OSSFile) -> Void
+    let onRenameFile: (OSSFile, String) -> Void
 
     // 用于 Table 的选择状态
     private var selectedFileIds: Binding<Set<String>> {
@@ -77,7 +81,6 @@ struct FileListView: View {
                     Image(systemName: file.iconName)
                         .foregroundColor(file.isDirectory ? .blue : .primary)
                         .frame(width: 16, height: 16)
-
                     Text(file.name)
                         .font(.body)
                         .lineLimit(1)
@@ -104,7 +107,7 @@ struct FileListView: View {
         .contextMenu(forSelectionType: OSSFile.ID.self) { items in
             contextMenuContent
         } primaryAction: { items in
-            // 双击处理：如果是单个文件，执行双击回调
+            // 双击处理
             if let fileId = items.first,
                let file = files.first(where: { $0.id == fileId }) {
                 onFileDoubleClick(file)
@@ -169,6 +172,19 @@ struct FileListView: View {
                 Text("确定要删除选中的 \(filesToDelete.count) 个项目吗？此操作不可撤销。")
             }
         }
+        .alert("重命名", isPresented: $showingRenameAlert) {
+            TextField("新名称", text: $newFileName)
+            Button("取消", role: .cancel) {}
+            Button("确定") {
+                if let file = fileToRename, !newFileName.isEmpty {
+                    onRenameFile(file, newFileName)
+                }
+            }
+        } message: {
+            if let file = fileToRename {
+                Text("为 \"\(file.name)\" 输入新名称")
+            }
+        }
     }
 
     // MARK: - Context Menu
@@ -231,6 +247,16 @@ struct FileListView: View {
                         Label("复制预签名地址", systemImage: "timer")
                     }
                 }
+            }
+
+            Divider()
+
+            Button(action: {
+                fileToRename = file
+                newFileName = file.name
+                showingRenameAlert = true
+            }) {
+                Label("重命名", systemImage: "pencil")
             }
 
             Divider()
@@ -344,6 +370,7 @@ struct FileListView: View {
         onDropFolder: { _ in },
         onCopyPath: { _ in },
         onCopyURL: { _ in },
-        onCopyPresignedURL: { _ in }
+        onCopyPresignedURL: { _ in },
+        onRenameFile: { _, _ in }
     )
 }
