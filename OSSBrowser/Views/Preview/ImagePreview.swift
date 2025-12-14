@@ -37,6 +37,7 @@ struct ImagePreview: View {
                         } placeholder: {
                             ProgressView()
                                 .scaleEffect(1.5)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         .clipped()
 
@@ -62,9 +63,13 @@ struct ImagePreview: View {
                     // 大图片提示
                     largeImagePrompt
                 } else if isLoadingImage {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack {
+                        Spacer()
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = imageLoadError {
                     errorView(error: error)
                 }
