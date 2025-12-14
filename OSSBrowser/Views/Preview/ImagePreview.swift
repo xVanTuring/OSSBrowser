@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AlibabaCloudOSS
+import AppKit
 
 struct ImagePreview: View {
     let file: OSSFile
@@ -17,32 +18,56 @@ struct ImagePreview: View {
     @State private var isLoadingImage = false
     @State private var imageLoadError: Error?
     @State private var shouldLoadLargeImage = false
+    @State private var imageDimensions: CGSize?
 
     // 图片大小阈值：10MB
     private let imageThreshold: Int64 = 5 * 1024 * 1024
 
     var body: some View {
         GeometryReader { geometry in
-            if let imageURL = imageURL {
-                AsyncImage(url: imageURL) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } placeholder: {
+            ZStack {
+                if let imageURL = imageURL {
+                    VStack(spacing: 0) {
+                        // 图片显示区域
+                        AsyncImage(url: imageURL) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } placeholder: {
+                            ProgressView()
+                                .scaleEffect(1.5)
+                        }
+                        .clipped()
+
+                        // 图片信息栏
+                        if let dimensions = imageDimensions {
+                            HStack {
+                                Text("尺寸: \(Int(dimensions.width)) × \(Int(dimensions.height))")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+
+                                Spacer()
+
+                                Text("文件大小: \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
+                        }
+                    }
+                } else if file.size > imageThreshold && !shouldLoadLargeImage {
+                    // 大图片提示
+                    largeImagePrompt
+                } else if isLoadingImage {
                     ProgressView()
                         .scaleEffect(1.5)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let error = imageLoadError {
+                    errorView(error: error)
                 }
-                .clipped()
-            } else if file.size > imageThreshold && !shouldLoadLargeImage {
-                // 大图片提示
-                largeImagePrompt
-            } else if isLoadingImage {
-                ProgressView()
-                    .scaleEffect(1.5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = imageLoadError {
-                errorView(error: error)
             }
         }
         .onAppear {
@@ -126,6 +151,7 @@ struct ImagePreview: View {
 
         isLoadingImage = true
         imageLoadError = nil
+        imageDimensions = nil // 重置尺寸信息
 
         Task {
             await generatePresignedURL()
@@ -158,9 +184,30 @@ struct ImagePreview: View {
 
             imageURL = URL(string: presignResult.url)
             isLoadingImage = false
+
+            // 加载图片尺寸信息
+            await loadImageDimensions()
         } catch {
             imageLoadError = error
             isLoadingImage = false
+        }
+    }
+
+    @MainActor
+    private func loadImageDimensions() async {
+        guard let imageURL = imageURL else { return }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: imageURL)
+
+            // 使用 NSImage 获取图片尺寸
+            if let nsImage = NSImage(data: data) {
+                let dimensions = CGSize(width: nsImage.size.width, height: nsImage.size.height)
+                imageDimensions = dimensions
+            }
+        } catch {
+            // 如果获取尺寸失败，不影响图片显示，只是不显示尺寸信息
+            print("Failed to load image dimensions: \(error)")
         }
     }
 }
