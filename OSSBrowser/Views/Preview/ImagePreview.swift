@@ -30,10 +30,21 @@ struct ImagePreview: View {
                     VStack(spacing: 0) {
                         // 图片显示区域
                         AsyncImage(url: imageURL) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            if let dimensions = imageDimensions,
+                               shouldShowActualSize(dimensions: dimensions, containerSize: geometry.size) {
+                                // 小图：显示实际尺寸，居中
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: dimensions.width, height: dimensions.height)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else {
+                                // 大图：适配容器大小
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
                         } placeholder: {
                             ProgressView()
                                 .scaleEffect(1.5)
@@ -214,5 +225,16 @@ struct ImagePreview: View {
             // 如果获取尺寸失败，不影响图片显示，只是不显示尺寸信息
             print("Failed to load image dimensions: \(error)")
         }
+    }
+
+    // 判断是否应该显示实际尺寸
+    private func shouldShowActualSize(dimensions: CGSize, containerSize: CGSize) -> Bool {
+        // 减去信息栏高度和一些边距
+        let availableHeight = containerSize.height - 60
+        let availableWidth = containerSize.width - 40
+
+        // 如果图片明显小于可用空间，显示实际尺寸
+        // 使用 80% 作为阈值，避免图片几乎填满屏幕时还显示原始尺寸
+        return dimensions.width <= availableWidth * 0.8 && dimensions.height <= availableHeight * 0.8
     }
 }
