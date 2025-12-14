@@ -54,6 +54,12 @@ struct FilePreviewWindow: View {
             .background(Color(NSColor.textBackgroundColor))
         }
         .frame(width: 600, height: 500)
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.space) {
+            dismiss()
+            return .handled
+        }
     }
 
     private func isImageFile(_ fileName: String) -> Bool {
