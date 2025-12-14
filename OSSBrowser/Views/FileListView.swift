@@ -140,10 +140,19 @@ struct FileListView: View {
             updateModifierKeys()
         }
         .onKeyPress { key in
+            // Command+A 全选
             if key.key == "a" && key.modifiers.contains(.command) {
                 selectAll()
                 return .handled
             }
+
+            // 方向键导航
+            if key.key == .upArrow || key.key == .downArrow {
+                let isShiftPressed = key.modifiers.contains(.shift)
+                handleArrowKeyNavigation(key.key == .upArrow ? -1 : 1, extendSelection: isShiftPressed)
+                return .handled
+            }
+
             return .ignored
         }
         .alert("确认删除", isPresented: $showingDeleteAlert) {
@@ -229,6 +238,104 @@ struct FileListView: View {
         // 创建包含所有文件ID的新集合（现在使用稳定的key作为ID）
         let allFileIds = Set(files.map { $0.id })
         selectedFiles = allFileIds
+    }
+
+    private func handleArrowKeyNavigation(_ direction: Int, extendSelection: Bool = false) {
+        guard !files.isEmpty else { return }
+
+        let currentIndex: Int
+        let targetIndex: Int
+
+        if selectedFiles.isEmpty {
+            // 没有选中任何文件时，选中第一个或最后一个
+            currentIndex = direction > 0 ? -1 : files.count
+            targetIndex = direction > 0 ? 0 : files.count - 1
+            selectedFiles = [files[targetIndex].id]
+            selectedFile = files[targetIndex]
+        } else if selectedFiles.count == 1 {
+            // 单选时，从当前选中项开始导航
+            let selectedId = selectedFiles.first!
+            if let idx = files.firstIndex(where: { $0.id == selectedId }) {
+                currentIndex = idx
+                targetIndex = currentIndex + direction
+
+                // 确保目标索引在有效范围内
+                let finalIndex = max(0, min(files.count - 1, targetIndex))
+
+                if extendSelection && lastClickedFile != nil {
+                    // Shift + 方向键：扩展选择范围
+                    if let lastClickedId = lastClickedFile,
+                       let lastIndex = files.firstIndex(where: { $0.id == lastClickedId }) {
+                        let startIndex = min(lastIndex, finalIndex)
+                        let endIndex = max(lastIndex, finalIndex)
+
+                        // 选择范围内的所有文件
+                        var newSelection = Set<String>()
+                        for i in startIndex...endIndex {
+                            newSelection.insert(files[i].id)
+                        }
+                        selectedFiles = newSelection
+                    }
+                } else {
+                    // 普通方向键：单选
+                    selectedFiles = [files[finalIndex].id]
+                }
+                selectedFile = files[finalIndex]
+                lastClickedFile = files[finalIndex].id
+            } else {
+                // 如果找不到当前选中项，选中第一个
+                targetIndex = 0
+                selectedFiles = [files[targetIndex].id]
+                selectedFile = files[targetIndex]
+                lastClickedFile = files[targetIndex].id
+            }
+        } else {
+            // 多选时，使用第一个选中项（按文件顺序）
+            let sortedSelectedIds = files
+                .filter { selectedFiles.contains($0.id) }
+                .map { $0.id }
+
+            if let firstSelectedId = sortedSelectedIds.first,
+               let idx = files.firstIndex(where: { $0.id == firstSelectedId }) {
+                currentIndex = idx
+                targetIndex = currentIndex + direction
+
+                // 确保目标索引在有效范围内
+                let finalIndex = max(0, min(files.count - 1, targetIndex))
+
+                if extendSelection && lastClickedFile != nil {
+                    // Shift + 方向键：扩展选择范围
+                    if let lastClickedId = lastClickedFile,
+                       let lastIndex = files.firstIndex(where: { $0.id == lastClickedId }) {
+                        let startIndex = min(lastIndex, finalIndex)
+                        let endIndex = max(lastIndex, finalIndex)
+
+                        // 选择范围内的所有文件
+                        var newSelection = Set<String>()
+                        for i in startIndex...endIndex {
+                            newSelection.insert(files[i].id)
+                        }
+                        selectedFiles = newSelection
+                    }
+                } else {
+                    // 普通方向键：清除其他选中项，只保留导航到的第一个
+                    selectedFiles = [files[finalIndex].id]
+                }
+                selectedFile = files[finalIndex]
+                lastClickedFile = files[finalIndex].id
+            } else {
+                // 如果找不到选中项，选中第一个
+                targetIndex = 0
+                selectedFiles = [files[targetIndex].id]
+                selectedFile = files[targetIndex]
+                lastClickedFile = files[targetIndex].id
+            }
+        }
+
+        // 回调文件选择
+        if selectedFiles.count == 1 {
+            onFileSelect(selectedFile!)
+        }
     }
 
     private func handleDelete(_ file: OSSFile) {
