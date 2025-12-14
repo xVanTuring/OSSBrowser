@@ -24,11 +24,11 @@ struct ImagePreview: View {
     private let imageThreshold: Int64 = 5 * 1024 * 1024
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                if let imageURL = imageURL {
-                    VStack(spacing: 0) {
-                        // 图片显示区域
+        VStack(spacing: 0) {
+            // 主内容区域
+            GeometryReader { geometry in
+                ZStack {
+                    if let imageURL = imageURL {
                         AsyncImage(url: imageURL) { image in
                             if let dimensions = imageDimensions,
                                shouldShowActualSize(dimensions: dimensions, containerSize: geometry.size) {
@@ -51,40 +51,44 @@ struct ImagePreview: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         .clipped()
-
-                        // 图片信息栏
-                        if let dimensions = imageDimensions {
-                            HStack {
-                                Text("尺寸: \(Int(dimensions.width)) × \(Int(dimensions.height))")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-
-                                Spacer()
-
-                                Text("文件大小: \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
+                    } else if file.size > imageThreshold && !shouldLoadLargeImage {
+                        // 大图片提示
+                        largeImagePrompt
+                    } else if isLoadingImage {
+                        VStack {
+                            Spacer()
+                            ProgressView()
+                                .scaleEffect(1.5)
+                            Spacer()
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let error = imageLoadError {
+                        errorView(error: error)
                     }
-                } else if file.size > imageThreshold && !shouldLoadLargeImage {
-                    // 大图片提示
-                    largeImagePrompt
-                } else if isLoadingImage {
-                    VStack {
-                        Spacer()
-                        ProgressView()
-                            .scaleEffect(1.5)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = imageLoadError {
-                    errorView(error: error)
                 }
             }
+
+            // 图片信息栏 - 始终显示
+            HStack {
+                if let dimensions = imageDimensions {
+                    Text("尺寸: \(Int(dimensions.width)) × \(Int(dimensions.height))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("尺寸: N/A")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Text("文件大小: \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
         }
         .onAppear {
             if file.size <= imageThreshold {
@@ -229,8 +233,8 @@ struct ImagePreview: View {
 
     // 判断是否应该显示实际尺寸
     private func shouldShowActualSize(dimensions: CGSize, containerSize: CGSize) -> Bool {
-        // 减去信息栏高度和一些边距
-        let availableHeight = containerSize.height - 60
+        // 减去信息栏高度（约 40 像素）和一些边距
+        let availableHeight = containerSize.height - 80
         let availableWidth = containerSize.width - 40
 
         // 如果图片明显小于可用空间，显示实际尺寸
