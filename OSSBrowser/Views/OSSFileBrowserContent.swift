@@ -449,15 +449,16 @@ struct OSSFileBrowserContent: View {
     // MARK: - Create Folder
     private func createFolder() {
         guard !folderName.isEmpty else { return }
-
+        let folderName = folderName
         Task {
             do {
+                print(folderName)
                 try await fileService.createDirectory(name: folderName)
             } catch {
                 fileService.error = error
             }
         }
-        folderName = ""
+        self.folderName = ""
     }
 }
 
