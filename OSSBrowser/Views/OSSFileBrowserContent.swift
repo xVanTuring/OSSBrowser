@@ -337,8 +337,16 @@ struct OSSFileBrowserContent: View {
     }
 
     private func handleCopyURL(_ file: OSSFile) {
-        let endpoint = config.endpoint ?? "https://oss-\(config.region).aliyuncs.com"
-        let url = "\(endpoint)/\(bucket.name)/\(file.key)"
+        // 构造正确的 OSS URL 格式
+        let url: String
+        if let customEndpoint = config.endpoint {
+            // 如果有自定义 endpoint，直接使用不追加 bucket
+            url = "\(customEndpoint)/\(file.key)"
+        } else {
+            // 使用默认的 OSS endpoint 格式：https://{bucket}.oss-{region}.aliyuncs.com/{file-key}
+            url = "https://\(bucket.name).oss-\(config.region).aliyuncs.com/\(file.key)"
+        }
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(url, forType: .string)
