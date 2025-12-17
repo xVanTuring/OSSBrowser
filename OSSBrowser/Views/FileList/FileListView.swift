@@ -66,6 +66,8 @@ struct FileListView: View {
         )
     }
 
+    @State private var emptyFolderDropActive = false
+
     var body: some View {
         VStack(spacing: 0) {
             // 文件列表
@@ -73,6 +75,10 @@ struct FileListView: View {
                 FileListStates.LoadingView()
             } else if files.isEmpty {
                 FileListStates.EmptyFolderView()
+                    .onDrop(of: [.fileURL], isTargeted: $emptyFolderDropActive) { providers in
+                        dropHandler.handleDrop(providers: providers)
+                    }
+                    .background(emptyFolderDropActive ? Color.accentColor.opacity(0.1) : Color.clear)
             } else {
                 FileTable(
                     files: files,
