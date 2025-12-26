@@ -61,7 +61,7 @@ class UploadManager: ObservableObject {
 
     // 分片上传配置
     private let multipartThreshold: Int64 = 100 * 1024 * 1024 // 100MB
-    private let partSize: Int64 = 100 * 1024 * 1024 // 10MB per part
+    private let partSize: Int64 = 20 * 1024 * 1024 // 10MB per part
     private let maxPartRetryAttempts = 3 // 每个分片最大重试次数
 
     // 存储分片上传的 uploadId
