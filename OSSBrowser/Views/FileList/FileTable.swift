@@ -14,6 +14,7 @@ struct FileTable: View {
     let onFileDoubleClick: (OSSFile) -> Void
     let dropHandler: FileDropHandler
     let keyboardHandler: FileKeyboardHandler
+    var onLoadMore: (() -> Void)? = nil
 
     @State private var sortedFiles: [OSSFile] = []
     @State private var sortOrder: [KeyPathComparator<OSSFile>] = [.init(\.name)]
@@ -41,6 +42,11 @@ struct FileTable: View {
                         .lineLimit(1)
                 }
                 .contentShape(Rectangle())
+                .onAppear {
+                    if file.id == sortedFiles.last?.id {
+                        onLoadMore?()
+                    }
+                }
             }
             .width(min: 300, ideal: 500, max: 800)
 

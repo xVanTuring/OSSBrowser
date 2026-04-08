@@ -12,6 +12,9 @@ struct FileListView: View {
     let files: [OSSFile]
     @Binding var selectedFiles: Set<String>
     let isLoading: Bool
+    let hasMore: Bool
+    let isLoadingMore: Bool
+    let onLoadMore: () -> Void
     let onFileSelect: (OSSFile) -> Void
     let onFileDoubleClick: (OSSFile) -> Void
     let onDownloadFile: (OSSFile) -> Void
@@ -85,7 +88,8 @@ struct FileListView: View {
                     selectedFiles: $selectedFiles,
                     onFileDoubleClick: onFileDoubleClick,
                     dropHandler: dropHandler,
-                    keyboardHandler: keyboardHandler
+                    keyboardHandler: keyboardHandler,
+                    onLoadMore: hasMore ? onLoadMore : nil
                 )
                 .contextMenu(forSelectionType: OSSFile.ID.self) { _ in
                     FileContextMenu(
@@ -114,6 +118,20 @@ struct FileListView: View {
                        let file = files.first(where: { $0.id == fileId }) {
                         onFileDoubleClick(file)
                     }
+                }
+
+                // 加载更多状态提示
+                if isLoadingMore {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("加载中...")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(Color(NSColor.controlBackgroundColor))
                 }
             }
         }
@@ -193,6 +211,9 @@ struct FileListView: View {
         ],
         selectedFiles: .constant([]),
         isLoading: false,
+        hasMore: false,
+        isLoadingMore: false,
+        onLoadMore: {},
         onFileSelect: { _ in },
         onFileDoubleClick: { _ in },
         onDownloadFile: { _ in },

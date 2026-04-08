@@ -26,6 +26,7 @@ struct OSSFileBrowserContent: View {
     @State private var fileToPreview: OSSFile?
     @State private var previewURL: URL?
     @State private var useQuickLook: Bool = false
+    @State private var searchText: String = ""
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
@@ -44,6 +45,11 @@ struct OSSFileBrowserContent: View {
                 files: fileService.files,
                 selectedFiles: $selectedFiles,
                 isLoading: fileService.isLoading,
+                hasMore: fileService.hasMore,
+                isLoadingMore: fileService.isLoadingMore,
+                onLoadMore: {
+                    Task { try? await fileService.loadMoreFiles() }
+                },
                 onFileSelect: handleFileSelect,
                 onFileDoubleClick: handleFileDoubleClick,
                 onDownloadFile: handleDownloadFile,
@@ -118,6 +124,23 @@ struct OSSFileBrowserContent: View {
         }
         .sheet(isPresented: $showingUploadProgress) {
             UploadProgressWindow()
+        }
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索文件前缀")
+        .onSubmit(of: .search) {
+            Task {
+                if searchText.isEmpty {
+                    try? await fileService.listFiles(at: fileService.currentPath, addToHistory: false)
+                } else {
+                    try? await fileService.search(searchText)
+                }
+            }
+        }
+        .onChange(of: searchText) { _, newValue in
+            if newValue.isEmpty {
+                Task {
+                    try? await fileService.listFiles(at: fileService.currentPath, addToHistory: false)
+                }
+            }
         }
         .toolbar {
             // 左侧导航按钮

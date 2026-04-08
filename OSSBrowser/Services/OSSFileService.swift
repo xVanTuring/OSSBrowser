@@ -18,7 +18,13 @@ class OSSFileService: ObservableObject {
     @Published var currentPath: String = ""
     @Published var files: [OSSFile] = []
     @Published var isLoading: Bool = false
+    @Published var isLoadingMore: Bool = false
+    @Published var hasMore: Bool = false
+    @Published var currentSearchQuery: String = ""
     @Published var error: Error?
+
+    private var nextContinuationToken: String? = nil
+    private let pageSize: Int = 200
 
     // 导航栈
     private var backStack: [String] = []  // 可以后退的路径
@@ -45,95 +51,156 @@ class OSSFileService: ObservableObject {
         }
     }
 
+    private func buildPrefix(for path: String) -> String {
+        var prefix = path.isEmpty ? "" : path
+        if !prefix.isEmpty && !prefix.hasSuffix("/") {
+            prefix += "/"
+        }
+        return prefix
+    }
+
+    private func processListResult(
+        _ result: ListObjectsV2Result,
+        prefix: String,
+        directorySet: inout Set<String>
+    ) -> [OSSFile] {
+        var fileList: [OSSFile] = []
+
+        if let objects = result.contents {
+            for object in objects {
+                let key = object.key ?? ""
+                if !key.hasSuffix("/") && key != prefix {
+                    fileList.append(OSSFile(
+                        key: key,
+                        size: Int64(object.size ?? 0),
+                        lastModified: object.lastModified ?? Date(),
+                        eTag: object.etag ?? "",
+                        storageClass: object.storageClass ?? "Standard",
+                        isDirectory: false
+                    ))
+                }
+            }
+        }
+
+        if let commonPrefixes = result.commonPrefixes {
+            for cp in commonPrefixes {
+                if let prefixValue = cp.prefix {
+                    let relativePath = prefixValue
+                        .replacingOccurrences(of: prefix, with: "")
+                        .trimmingCharacters(in: ["/"])
+                    if !relativePath.isEmpty && !directorySet.contains(prefixValue) {
+                        directorySet.insert(prefixValue)
+                        fileList.append(OSSFile(
+                            key: prefixValue.trimmingCharacters(in: ["/"]),
+                            size: 0,
+                            lastModified: Date(),
+                            eTag: "",
+                            storageClass: "",
+                            isDirectory: true
+                        ))
+                    }
+                }
+            }
+        }
+
+        return fileList
+    }
+
+    private func sortFiles(_ fileList: [OSSFile]) -> [OSSFile] {
+        fileList.sorted { lhs, rhs in
+            if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+            return lhs.name.localizedCompare(rhs.name) == .orderedAscending
+        }
+    }
+
     func listFiles(at path: String = "", addToHistory: Bool = true) async throws {
         // 如果是新的导航（不是通过前进/后退），需要更新栈
         if addToHistory && path != currentPath {
-            // 将当前路径推入后退栈
             backStack.append(currentPath)
-            // 清空前进栈，因为这是新的导航
             forwardStack.removeAll()
         }
 
         currentPath = path
+        currentSearchQuery = ""
         isLoading = true
         error = nil
+        nextContinuationToken = nil
+        hasMore = false
 
-        defer {
-            isLoading = false
+        defer { isLoading = false }
+
+        try await fetchFiles(dirPrefix: buildPrefix(for: path), searchQuery: "")
+    }
+
+    func search(_ query: String) async throws {
+        guard !isLoading else { return }
+
+        currentSearchQuery = query
+        isLoading = true
+        error = nil
+        nextContinuationToken = nil
+        hasMore = false
+
+        defer { isLoading = false }
+
+        try await fetchFiles(dirPrefix: buildPrefix(for: currentPath), searchQuery: query)
+    }
+
+    private func fetchFiles(dirPrefix: String, searchQuery: String) async throws {
+        guard let client = client else {
+            throw OSSError.clientNotInitialized
         }
+
+        // 搜索时 prefix = 目录前缀 + 搜索词，不带 delimiter 可跨子目录匹配
+        // 搜索时保留 delimiter 只匹配当前目录层级
+        let requestPrefix = dirPrefix + searchQuery
+        var directorySet = Set<String>()
+
+        let result = try await client.listObjectsV2(ListObjectsV2Request(
+            bucket: bucketName,
+            delimiter: "/",
+            maxKeys: pageSize,
+            prefix: requestPrefix
+        ))
+
+        let fileList = processListResult(result, prefix: dirPrefix, directorySet: &directorySet)
+        nextContinuationToken = result.nextContinuationToken
+        hasMore = result.isTruncated ?? false
+
+        files = sortFiles(fileList)
+    }
+
+    func loadMoreFiles() async throws {
+        guard hasMore, let token = nextContinuationToken, !isLoadingMore else { return }
+
+        isLoadingMore = true
+        defer { isLoadingMore = false }
 
         guard let client = client else {
             throw OSSError.clientNotInitialized
         }
 
-        var fileList: [OSSFile] = []
-        var directorySet = Set<String>()
+        let dirPrefix = buildPrefix(for: currentPath)
+        let requestPrefix = dirPrefix + currentSearchQuery
+        var directorySet = Set<String>(
+            files.filter { $0.isDirectory }.map {
+                $0.key.hasSuffix("/") ? $0.key : "\($0.key)/"
+            }
+        )
 
-        // 获取文件列表
-        // 注意：OSS 的 prefix 需要以 / 结尾来表示目录
-        var prefix = path.isEmpty ? "" : path
-        if !prefix.isEmpty && !prefix.hasSuffix("/") {
-            prefix += "/"
-        }
-        let delimiter = "/"
-
-        // 使用分页器获取所有文件
-        for try await result in client.listObjectsV2Paginator(ListObjectsV2Request(
+        let result = try await client.listObjectsV2(ListObjectsV2Request(
             bucket: bucketName,
-            delimiter: delimiter,
-            prefix: prefix
-        )) {
-            // 处理文件
-            if let objects = result.contents {
-                for object in objects {
-                    let key = object.key ?? ""
-                    // 跳过目录标记（以 / 结尾）
-                    if !key.hasSuffix("/") && key != prefix {
-                        let file = OSSFile(
-                            key: key,
-                            size: Int64(object.size ?? 0),
-                            lastModified: object.lastModified ?? Date(),
-                            eTag: object.etag ?? "",
-                            storageClass: object.storageClass ?? "Standard",
-                            isDirectory: false
-                        )
-                        fileList.append(file)
-                    }
-                }
-            }
+            delimiter: "/",
+            maxKeys: pageSize,
+            prefix: requestPrefix,
+            continuationToken: token
+        ))
 
-            // 处理目录（CommonPrefixes）
-            if let commonPrefixes = result.commonPrefixes {
-                for cp in commonPrefixes {
-                    if let prefixValue = cp.prefix {
-                        // 移除当前路径前缀，获取相对目录名
-                        let relativePath = prefixValue.replacingOccurrences(of: prefix, with: "")
-                            .trimmingCharacters(in: ["/"])
+        let newFiles = processListResult(result, prefix: dirPrefix, directorySet: &directorySet)
+        nextContinuationToken = result.nextContinuationToken
+        hasMore = result.isTruncated ?? false
 
-                        if !relativePath.isEmpty && !directorySet.contains(prefixValue) {
-                            directorySet.insert(prefixValue)
-                            let directory = OSSFile(
-                                key: prefixValue.trimmingCharacters(in: ["/"]),
-                                size: 0,
-                                lastModified: Date(),
-                                eTag: "",
-                                storageClass: "",
-                                isDirectory: true
-                            )
-                            fileList.append(directory)
-                        }
-                    }
-                }
-            }
-        }
-
-        // 排序：目录在前，文件在后，都按名称排序
-        files = fileList.sorted { lhs, rhs in
-            if lhs.isDirectory != rhs.isDirectory {
-                return lhs.isDirectory
-            }
-            return lhs.name.localizedCompare(rhs.name) == .orderedAscending
-        }
+        files = sortFiles(files + newFiles)
     }
 
     func changeDirectory(_ file: OSSFile) async throws {
