@@ -361,51 +361,71 @@ class OSSFileService: ObservableObject {
     // MARK: - Rename Methods
     func renameFile(_ file: OSSFile, newName: String) async throws {
         guard let client = client else {
-            throw NSError(domain: "OSSFileService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Client not initialized"])
+            throw OSSError.clientNotInitialized
         }
 
-        // 检查新名称是否有效
-        guard !newName.isEmpty && newName != file.name else {
-            throw NSError(domain: "OSSFileService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Invalid new name"])
+        let trimmedNewName = newName.trimmingCharacters(in: ["/"])
+        guard !trimmedNewName.isEmpty,
+              !trimmedNewName.contains("/"),
+              trimmedNewName != file.name else {
+            throw NSError(
+                domain: "OSSFileService",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "无效的新名称"]
+            )
         }
-        // FIXME： 错误实现
-        // // 构建新的完整路径
-        // let oldKey = file.key
 
-        // // 获取文件的目录路径
-        // let directoryPath = (oldKey as NSString).deletingLastPathComponent
+        // 计算所在目录（不含末尾 /）
+        let parentDir: String = {
+            let components = file.key.split(separator: "/", omittingEmptySubsequences: true)
+            guard components.count > 1 else { return "" }
+            return components.dropLast().joined(separator: "/")
+        }()
 
-        // // 构建新路径
-        // let newKey: String
-        // if file.isDirectory {
-        //     // 如果是文件夹，确保新名称以 / 结尾
-        //     let folderName = newName.hasSuffix("/") ? newName : "\(newName)/"
-        //     newKey = directoryPath.isEmpty ? folderName : "\(directoryPath)/\(folderName)"
-        // } else {
-        //     // 如果是文件
-        //     newKey = directoryPath.isEmpty ? newName : "\(directoryPath)/\(newName)"
-        // }
+        if file.isDirectory {
+            // 文件夹：遍历旧前缀下所有对象，逐个复制到新前缀后删除原对象
+            let oldPrefix = file.key.hasSuffix("/") ? file.key : "\(file.key)/"
+            let newDirKey = parentDir.isEmpty ? trimmedNewName : "\(parentDir)/\(trimmedNewName)"
+            let newPrefix = "\(newDirKey)/"
 
-        // // 使用 OSS 的复制和删除操作来实现重命名
-        // // 1. 复制对象到新路径
-        // let copyResult = try await client.copyObject(CopyObjectRequest(
-        //     bucket: bucketName,
-        //     key: newKey,
-        //     sourceBucket: bucketName,
-        //     sourceKey: oldKey
-        // ))
+            for try await result in client.listObjectsV2Paginator(ListObjectsV2Request(
+                bucket: bucketName,
+                prefix: oldPrefix
+            )) {
+                guard let objects = result.contents else { continue }
+                for object in objects {
+                    guard let sourceKey = object.key else { continue }
+                    let suffix = String(sourceKey.dropFirst(oldPrefix.count))
+                    let destKey = "\(newPrefix)\(suffix)"
 
-        // print("Copy object result: \(copyResult.requestId)")
+                    _ = try await client.copyObject(CopyObjectRequest(
+                        bucket: bucketName,
+                        key: destKey,
+                        sourceBucket: bucketName,
+                        sourceKey: sourceKey
+                    ))
+                    _ = try await client.deleteObject(DeleteObjectRequest(
+                        bucket: bucketName,
+                        key: sourceKey
+                    ))
+                }
+            }
+        } else {
+            // 文件：CopyObject + DeleteObject
+            let newKey = parentDir.isEmpty ? trimmedNewName : "\(parentDir)/\(trimmedNewName)"
 
-        // // 2. 删除原对象
-        // let deleteResult = try await client.deleteObject(DeleteObjectRequest(
-        //     bucket: bucketName,
-        //     key: oldKey
-        // ))
+            _ = try await client.copyObject(CopyObjectRequest(
+                bucket: bucketName,
+                key: newKey,
+                sourceBucket: bucketName,
+                sourceKey: file.key
+            ))
+            _ = try await client.deleteObject(DeleteObjectRequest(
+                bucket: bucketName,
+                key: file.key
+            ))
+        }
 
-        // print("Delete object result: \(deleteResult.requestId)")
-
-        // // 3. 刷新文件列表
-        // try await listFiles(at: currentPath, addToHistory: false)
+        try await listFiles(at: currentPath, addToHistory: false)
     }
 }
