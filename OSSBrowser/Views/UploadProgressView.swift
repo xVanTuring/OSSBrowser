@@ -134,13 +134,28 @@ struct UploadTaskRowView: View {
                         .font(.caption)
                         .foregroundColor(.orange)
 
-                case .uploading(let progress):
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundColor(.blue)
-                    ProgressView(value: progress)
+                case .uploading:
+                    HStack(spacing: 4) {
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(task.progressPercentage)%")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                    }
+                    ProgressView(value: task.progress)
                         .progressViewStyle(LinearProgressViewStyle())
                         .frame(width: 100)
+                    HStack(spacing: 6) {
+                        Text(task.uploadSpeed)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        if let rt = task.remainingTime {
+                            Text(rt)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                    }
 
                 case .completed:
                     Text("已完成")
@@ -155,6 +170,11 @@ struct UploadTaskRowView: View {
                         uploadManager.retryFailedTask(task)
                     }
                     .font(.caption)
+
+                case .cancelled:
+                    Text("已取消")
+                        .font(.caption)
+                        .foregroundColor(.gray)
                 }
             }
         }
@@ -170,6 +190,13 @@ struct UploadTaskRowView: View {
             return Color.red.opacity(0.1)
         }
         return Color.clear
+    }
+
+    private var statusText: String {
+        if task.totalParts > 1 {
+            return "上传中 (\(task.completedParts)/\(task.totalParts))"
+        }
+        return "上传中"
     }
 }
 

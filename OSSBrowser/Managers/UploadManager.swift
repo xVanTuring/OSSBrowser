@@ -6,66 +6,24 @@
 //
 
 import Foundation
-import SwiftUI
 import AlibabaCloudOSS
 import Combine
 
-// 上传任务状态
-enum UploadStatus {
-    case pending
-    case uploading(progress: Double)
-    case completed
-    case failed(Error)
-}
-
-// 上传任务模型
-class UploadTask: ObservableObject, Identifiable {
-    let id = UUID()
-    let fileName: String
-    let localPath: String
-    let remotePath: String
-    let fileSize: Int64
-    let isDirectory: Bool
-
-    @Published var status: UploadStatus = .pending
-    @Published var progress: Double = 0.0
-
-    init(fileName: String, localPath: String, remotePath: String, fileSize: Int64, isDirectory: Bool = false) {
-        self.fileName = fileName
-        self.localPath = localPath
-        self.remotePath = remotePath
-        self.fileSize = fileSize
-        self.isDirectory = isDirectory
-    }
-}
-
-// 上传管理器
 @MainActor
 class UploadManager: ObservableObject {
     static let shared = UploadManager()
+
+    @Published var uploadTasks: [UploadTask] = []
+
+    var onUploadComplete: (() -> Void)?
 
     private var client: Client?
     private var config: OSSConfiguration?
     private var bucketName: String?
 
-    // 上传完成回调
-    var onUploadComplete: (() -> Void)?
-
-    // 当前上传任务
-    @Published var uploadTasks: [UploadTask] = []
-
-    // 并发控制
-    private let maxConcurrentUploads = 5
-    private var activeUploads = 0
-    private var uploadQueue: [UploadTask] = []
-
-    // 分片上传配置
-    private let multipartThreshold: Int64 = 100 * 1024 * 1024 // 100MB
-    private let partSize: Int64 = 20 * 1024 * 1024 // 10MB per part
-    private let maxPartRetryAttempts = 3 // 每个分片最大重试次数
-
-    // 存储分片上传的 uploadId
-    private var multipartUploadIds: [String: String] = [:]
+    private var activeUploads: Set<UUID> = []
+    private var taskHandles: [UUID: Task<Void, Never>] = [:]
+    private let maxConcurrentTasks = 5
 
     private init() {}
 
@@ -87,15 +45,12 @@ class UploadManager: ObservableObject {
         }
     }
 
-    // 上传单个文件
-    func uploadFile(_ url: URL, to remotePath: String, in bucket: String) {
-        guard let client = client else { return }
+    // MARK: - Public API
 
-        // 获取文件信息
+    func uploadFile(_ url: URL, to remotePath: String, in bucket: String) {
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = attributes?[.size] as? Int64 ?? 0
 
-        // 创建上传任务
         let task = UploadTask(
             fileName: url.lastPathComponent,
             localPath: url.path,
@@ -104,20 +59,15 @@ class UploadManager: ObservableObject {
         )
 
         uploadTasks.append(task)
-
-        // 添加到队列
-        if activeUploads < maxConcurrentUploads {
-            startUpload(task, client: client, bucket: bucket)
-        } else {
-            uploadQueue.append(task)
-        }
+        processQueue(bucket: bucket)
     }
 
-    // 上传文件夹
     func uploadFolder(_ url: URL, to remotePath: String, in bucket: String) {
-        guard let enumerator = FileManager.default.enumerator(at: url,
-                                                           includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-                                                           options: [.skipsHiddenFiles]) else { return }
+        guard let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
 
         var folderTasks: [UploadTask] = []
 
@@ -125,310 +75,449 @@ class UploadManager: ObservableObject {
             do {
                 let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
                 let isDirectory = resourceValues.isDirectory ?? false
+                if isDirectory { continue }
 
-                if !isDirectory {
-                    let fileSize = Int64(resourceValues.fileSize ?? 0)
-                    // 获取相对于文件夹根目录的路径
-                    let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
-                    // 如果 remotePath 为空，使用相对路径；否则组合
-                    let remoteFilePath = remotePath.isEmpty ? relativePath : "\(remotePath)/\(relativePath)"
+                let fileSize = Int64(resourceValues.fileSize ?? 0)
+                let relativePath = fileURL.path.replacingOccurrences(of: url.path + "/", with: "")
+                let remoteFilePath = remotePath.isEmpty ? relativePath : "\(remotePath)/\(relativePath)"
 
-                    let task = UploadTask(
-                        fileName: fileURL.lastPathComponent,
-                        localPath: fileURL.path,
-                        remotePath: remoteFilePath,
-                        fileSize: fileSize
-                    )
-
-                    folderTasks.append(task)
-                }
+                folderTasks.append(UploadTask(
+                    fileName: fileURL.lastPathComponent,
+                    localPath: fileURL.path,
+                    remotePath: remoteFilePath,
+                    fileSize: fileSize
+                ))
             } catch {
                 print("Error getting file info: \(error)")
             }
         }
 
-        // 按文件路径排序，确保上传顺序
         folderTasks.sort { $0.localPath < $1.localPath }
-
         uploadTasks.append(contentsOf: folderTasks)
+        processQueue(bucket: bucket)
+    }
 
-        // 将文件夹任务添加到上传队列
-        for task in folderTasks {
-            if activeUploads < maxConcurrentUploads {
-                startUpload(task, client: client!, bucket: bucket)
-            } else {
-                uploadQueue.append(task)
-            }
+    func cancelUpload(_ task: UploadTask) {
+        if let handle = taskHandles[task.id] {
+            handle.cancel()
+            taskHandles.removeValue(forKey: task.id)
+        }
+        task.status = .cancelled
+        activeUploads.remove(task.id)
+        if let bucket = bucketName {
+            processQueue(bucket: bucket)
         }
     }
 
-    private func startUpload(_ task: UploadTask, client: Client, bucket: String) {
-        guard activeUploads < maxConcurrentUploads else { return }
-
-        activeUploads += 1
-        task.status = .uploading(progress: 0.0)
-
-        Task { @MainActor in
-            do {
-                // 根据文件大小选择上传方式
-                if task.fileSize >= multipartThreshold {
-                    try await uploadLargeFile(task: task, client: client, bucket: bucket)
-                } else {
-                    try await uploadSmallFile(task: task, client: client, bucket: bucket)
-                }
-
-                // 上传完成后触发回调
-                onUploadComplete?()
-
-            } catch {
-                task.status = .failed(error)
-                print("Upload failed: \(task.fileName), Error: \(error)")
-
-                // 强制刷新 UI
-                self.objectWillChange.send()
-            }
-
-            activeUploads -= 1
-
-            // 处理队列中的下一个任务
-            if !uploadQueue.isEmpty {
-                let nextTask = uploadQueue.removeFirst()
-                startUpload(nextTask, client: client, bucket: bucket)
-            }
+    func removeTask(_ task: UploadTask) {
+        // 若正在上传，先取消
+        if activeUploads.contains(task.id) {
+            cancelUpload(task)
         }
+        uploadTasks.removeAll { $0.id == task.id }
     }
 
-    // 小文件直接上传
-    private func uploadSmallFile(task: UploadTask, client: Client, bucket: String) async throws {
-        let data = try Data(contentsOf: URL(fileURLWithPath: task.localPath))
-        var request = PutObjectRequest(
-            bucket: bucket,
-            key: task.remotePath,
-            body: .data(data)
-        )
-
-        // 设置上传进度回调
-        request.progress = ProgressClosure{ [weak task] bytesIncrement, totalBytesTransferred, totalBytesExpected in
-            guard let task = task else { return }
-
-            let progress = totalBytesExpected > 0 ? Double(totalBytesTransferred) / Double(totalBytesExpected) : 0.0
-
-            Task { @MainActor in
-                task.progress = progress
-                task.status = .uploading(progress: progress)
-                print("Upload progress for \(task.fileName): \(String(format: "%.1f%%", progress * 100))")
-            }
-        }
-
-        let result = try await client.putObject(request)
-
-        // 确保最终状态为完成
-        task.status = .completed
-        task.progress = 1.0
-        print("Upload completed: \(task.fileName), RequestId: \(result.requestId)")
-
-        // 强制刷新 UI
-        self.objectWillChange.send()
-    }
-
-    // 大文件分片上传
-    private func uploadLargeFile(task: UploadTask, client: Client, bucket: String) async throws {
-        print("Starting multipart upload for \(task.fileName) (\(ByteCountFormatter.string(fromByteCount: task.fileSize, countStyle: .file)))")
-
-        // 1. 初始化分片上传
-        let initResult = try await client.initiateMultipartUpload(
-            InitiateMultipartUploadRequest(
-                bucket: bucket,
-                key: task.remotePath
-            )
-        )
-
-        let uploadId = initResult.uploadId
-        multipartUploadIds[task.id.uuidString] = uploadId
-
-        // 2. 计算分片数量
-        let partCount = Int((task.fileSize + partSize - 1) / partSize)
-        var parts: [UploadPart] = []
-        var uploadedBytes: Int64 = 0
-
-        // 3. 打开文件并准备上传分片
-        guard let fileHandle = FileHandle(forReadingAtPath: task.localPath) else {
-            throw NSError(domain: "UploadError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Cannot open file for reading"])
-        }
-
-        defer {
-            fileHandle.closeFile()
-        }
-
-        // 4. 顺序上传分片（带重试机制）
-        for partNumber in 1...partCount {
-            var uploadSuccess = false
-            var lastError: Error?
-
-            // 读取分片数据（只需要读取一次）
-            let offset = Int64((partNumber - 1)) * self.partSize
-            fileHandle.seek(toFileOffset: UInt64(offset))
-            let currentPartSize = min(self.partSize, task.fileSize - offset)
-            let partData = fileHandle.readData(ofLength: Int(currentPartSize))
-
-            // 重试循环
-            for attempt in 1...maxPartRetryAttempts {
-                do {
-                    print("Uploading part \(partNumber) of \(task.fileName) (attempt \(attempt)/\(maxPartRetryAttempts))")
-
-                    // 上传分片
-                    let uploadPartResult = try await client.uploadPart(
-                        UploadPartRequest(
-                            bucket: bucket,
-                            key: task.remotePath,
-                            partNumber: partNumber,
-                            uploadId: uploadId,
-                            body: .data(partData)
-                        )
-                    )
-
-                    let part = UploadPart(
-                        etag: uploadPartResult.etag,
-                        partNumber: partNumber
-                    )
-
-                    parts.append(part)
-                    uploadedBytes += currentPartSize
-                    uploadSuccess = true
-
-                    // 更新进度
-                    let progress = Double(partNumber) / Double(partCount)
-                    Task { @MainActor in
-                        task.progress = progress
-                        task.status = .uploading(progress: progress)
-                        print("Multipart upload progress for \(task.fileName): \(String(format: "%.1f%%", progress * 100)) (\(partNumber)/\(partCount) parts)")
-                    }
-
-                    break // 成功则退出重试循环
-
-                } catch {
-                    lastError = error
-                    print("Upload part \(partNumber) failed (attempt \(attempt)/\(maxPartRetryAttempts)): \(error)")
-
-                    if attempt < maxPartRetryAttempts {
-                        // 等待一段时间再重试（指数退避）
-                        let delay = pow(2.0, Double(attempt - 1)) // 1s, 2s, 4s
-                        print("Retrying part \(partNumber) after \(delay) seconds...")
-                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                    }
-                }
-            }
-
-            // 如果所有重试都失败，抛出错误
-            if !uploadSuccess {
-                let errorMessage = "Part \(partNumber) upload failed after \(maxPartRetryAttempts) attempts"
-                print("\(errorMessage): \(lastError?.localizedDescription ?? "Unknown error")")
-                throw NSError(domain: "UploadError", code: -2, userInfo: [
-                    NSLocalizedDescriptionKey: errorMessage,
-                    NSUnderlyingErrorKey: lastError as Any
-                ])
-            }
-        }
-
-        // 5. 完成分片上传
-        parts.sort { ($0.partNumber ?? 0) < ($1.partNumber ?? 0) }
-
-        let _ = try await client.completeMultipartUpload(
-            CompleteMultipartUploadRequest(
-                bucket: bucket,
-                key: task.remotePath,
-                uploadId: uploadId,
-                completeMultipartUpload: CompleteMultipartUpload(parts: parts)
-            )
-        )
-
-        // 清理 uploadId
-        multipartUploadIds.removeValue(forKey: task.id.uuidString)
-
-        // 确保最终状态为完成
-        task.status = .completed
-        task.progress = 1.0
-        print("Multipart upload completed: \(task.fileName)")
-
-        // 强制刷新 UI
-        self.objectWillChange.send()
-    }
-
-    private func processQueue(client: Client, bucket: String) {
-        while activeUploads < maxConcurrentUploads && !uploadQueue.isEmpty {
-            let task = uploadQueue.removeFirst()
-            startUpload(task, client: client, bucket: bucket)
-        }
-    }
-
-    // 清除已完成的任务
     func clearCompletedTasks() {
         uploadTasks.removeAll { task in
-            if case .completed = task.status {
-                return true
-            }
-            return false
+            task.status == .completed || task.status == .cancelled
         }
     }
 
-    // 重试失败的任务
     func retryFailedTask(_ task: UploadTask) {
-        guard let client = client, let bucket = bucketName,
-              case .failed = task.status else { return }
+        guard let bucket = bucketName else { return }
+        guard task.status == .failed else { return }
 
         task.status = .pending
-        if activeUploads < maxConcurrentUploads {
-            startUpload(task, client: client, bucket: bucket)
-        } else {
-            uploadQueue.append(task)
-        }
+        task.error = nil
+        task.uploadedBytes = 0
+        task.progress = 0.0
+        task.completedParts = 0
+        task.startTime = nil
+        task.endTime = nil
+        processQueue(bucket: bucket)
     }
 
-    // 取消上传任务
-    func cancelUpload(_ task: UploadTask) async {
-        guard let client = client, let bucket = bucketName else { return }
-
-        // 如果是分片上传，需要取消 uploadId
-        if let uploadId = multipartUploadIds[task.id.uuidString] {
-            do {
-                let _ = try await client.abortMultipartUpload(
-                    AbortMultipartUploadRequest(
-                        bucket: bucket,
-                        key: task.remotePath,
-                        uploadId: uploadId
-                    )
-                )
-                multipartUploadIds.removeValue(forKey: task.id.uuidString)
-                print("Multipart upload cancelled for \(task.fileName)")
-            } catch {
-                print("Failed to abort multipart upload: \(error)")
-            }
-        }
-
-        // 从队列中移除
-        uploadTasks.removeAll { $0.id == task.id }
-        uploadQueue.removeAll { $0.id == task.id }
-    }
-
-    // 获取上传进度统计
     func getUploadProgress() -> (total: Int, completed: Int, uploading: Int, failed: Int) {
         var completed = 0
         var uploading = 0
         var failed = 0
-
         for task in uploadTasks {
             switch task.status {
-            case .completed:
-                completed += 1
-            case .uploading:
-                uploading += 1
-            case .failed:
-                failed += 1
-            case .pending:
-                break
+            case .completed: completed += 1
+            case .uploading: uploading += 1
+            case .failed: failed += 1
+            case .pending, .cancelled: break
+            }
+        }
+        return (uploadTasks.count, completed, uploading, failed)
+    }
+
+    // MARK: - Queue
+
+    private func processQueue(bucket: String) {
+        let pendingTasks = uploadTasks.filter { $0.status == .pending }
+        let availableSlots = maxConcurrentTasks - activeUploads.count
+        let tasksToStart = Array(pendingTasks.prefix(availableSlots))
+
+        for task in tasksToStart {
+            startUpload(task, bucket: bucket)
+        }
+    }
+
+    private func startUpload(_ task: UploadTask, bucket: String) {
+        guard let client = client else { return }
+
+        activeUploads.insert(task.id)
+        task.status = .uploading
+        task.startTime = Date()
+
+        let settings = UploadSettings.shared.snapshot()
+        let runner = UploadRunner(
+            client: client,
+            task: task,
+            bucket: bucket,
+            settings: settings
+        )
+
+        let handle = Task { [weak self] in
+            let result = await runner.run()
+            await MainActor.run {
+                guard let self = self else { return }
+                self.handleCompletion(task: task, result: result, bucket: bucket)
+            }
+        }
+        taskHandles[task.id] = handle
+    }
+
+    private func handleCompletion(task: UploadTask, result: UploadRunner.Outcome, bucket: String) {
+        taskHandles.removeValue(forKey: task.id)
+        task.endTime = Date()
+
+        switch result {
+        case .success:
+            task.status = .completed
+            task.progress = 1.0
+            task.uploadedBytes = task.fileSize
+            task.completedParts = task.totalParts
+            onUploadComplete?()
+        case .cancelled:
+            if task.status != .cancelled {
+                task.status = .cancelled
+            }
+        case .failed(let error):
+            task.error = error
+            task.status = .failed
+            print("Upload failed: \(task.fileName), error: \(error.localizedDescription)")
+        }
+
+        activeUploads.remove(task.id)
+        processQueue(bucket: bucket)
+    }
+}
+
+// MARK: - Upload Runner
+
+nonisolated struct UploadRunner {
+    enum Outcome {
+        case success
+        case cancelled
+        case failed(Error)
+    }
+
+    let client: Client
+    let task: UploadTask
+    let bucket: String
+    let settings: UploadSettings.Snapshot
+
+    func run() async -> Outcome {
+        let localURL = URL(fileURLWithPath: task.localPath)
+        let fileSize = task.fileSize
+
+        let useMultipart = fileSize >= settings.multipartThreshold && fileSize > 0
+        let partSize = useMultipart ? settings.partSize : fileSize
+        let totalParts: Int
+        if fileSize == 0 {
+            totalParts = 1
+        } else {
+            totalParts = Int((fileSize + partSize - 1) / partSize)
+        }
+
+        let remotePath = task.remotePath
+        await MainActor.run { [task] in
+            task.partSize = partSize
+            task.totalParts = totalParts
+            task.completedParts = 0
+        }
+
+        if !useMultipart {
+            return await runSingle(url: localURL, fileSize: fileSize, remotePath: remotePath)
+        }
+        return await runMultipart(
+            url: localURL,
+            fileSize: fileSize,
+            partSize: partSize,
+            totalParts: totalParts,
+            remotePath: remotePath
+        )
+    }
+
+    // MARK: Single upload
+
+    private func runSingle(url: URL, fileSize: Int64, remotePath: String) async -> Outcome {
+        let counter = TransferByteCounter()
+        let ticker = Self.makeTicker(task: task, counter: counter, totalSize: fileSize)
+        await ticker.start()
+        defer { Task { await ticker.stop() } }
+
+        var request = PutObjectRequest(
+            bucket: bucket,
+            key: remotePath,
+            body: .file(url)
+        )
+        request.progress = ProgressClosure { bytesIncrement, _, _ in
+            counter.add(bytesIncrement)
+        }
+
+        do {
+            _ = try await client.putObject(request)
+            try Task.checkCancellation()
+            await ticker.stop()
+            return .success
+        } catch is CancellationError {
+            await ticker.stop()
+            return .cancelled
+        } catch {
+            await ticker.stop()
+            return .failed(error)
+        }
+    }
+
+    // MARK: Multipart upload
+
+    private func runMultipart(
+        url: URL,
+        fileSize: Int64,
+        partSize: Int64,
+        totalParts: Int,
+        remotePath: String
+    ) async -> Outcome {
+        // 1. Initiate
+        let uploadId: String
+        do {
+            let initResult = try await client.initiateMultipartUpload(
+                InitiateMultipartUploadRequest(bucket: bucket, key: remotePath)
+            )
+            guard let id = initResult.uploadId else {
+                return .failed(NSError(
+                    domain: "UploadManager",
+                    code: -20,
+                    userInfo: [NSLocalizedDescriptionKey: "Missing uploadId"]
+                ))
+            }
+            uploadId = id
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            return .failed(error)
+        }
+
+        let counter = TransferByteCounter()
+        let ticker = Self.makeTicker(task: task, counter: counter, totalSize: fileSize)
+        await ticker.start()
+
+        // 2. Upload parts concurrently
+        var uploadedParts: [Int: UploadPart] = [:]
+
+        do {
+            try await withThrowingTaskGroup(of: (Int, UploadPart).self) { group in
+                var nextIndex = 0
+                let concurrency = max(1, settings.maxConcurrency)
+
+                while nextIndex < totalParts && nextIndex < concurrency {
+                    let idx = nextIndex
+                    group.addTask { [client, settings, bucket, remotePath] in
+                        let part = try await Self.uploadOnePart(
+                            index: idx,
+                            fileURL: url,
+                            partSize: partSize,
+                            totalSize: fileSize,
+                            bucket: bucket,
+                            key: remotePath,
+                            uploadId: uploadId,
+                            client: client,
+                            counter: counter,
+                            maxRetry: settings.maxPartRetry
+                        )
+                        return (idx, part)
+                    }
+                    nextIndex += 1
+                }
+
+                while let (idx, part) = try await group.next() {
+                    uploadedParts[idx] = part
+                    await MainActor.run { [task] in
+                        task.completedParts = min(task.completedParts + 1, task.totalParts)
+                    }
+                    if nextIndex < totalParts {
+                        let next = nextIndex
+                        group.addTask { [client, settings, bucket, remotePath] in
+                            let part = try await Self.uploadOnePart(
+                                index: next,
+                                fileURL: url,
+                                partSize: partSize,
+                                totalSize: fileSize,
+                                bucket: bucket,
+                                key: remotePath,
+                                uploadId: uploadId,
+                                client: client,
+                                counter: counter,
+                                maxRetry: settings.maxPartRetry
+                            )
+                            return (next, part)
+                        }
+                        nextIndex += 1
+                    }
+                }
+            }
+        } catch is CancellationError {
+            await ticker.stop()
+            await Self.tryAbort(client: client, bucket: bucket, key: remotePath, uploadId: uploadId)
+            return .cancelled
+        } catch {
+            await ticker.stop()
+            await Self.tryAbort(client: client, bucket: bucket, key: remotePath, uploadId: uploadId)
+            return .failed(error)
+        }
+
+        await ticker.stop()
+
+        // 3. Complete
+        let sortedParts = (0..<totalParts).compactMap { uploadedParts[$0] }
+        do {
+            _ = try await client.completeMultipartUpload(
+                CompleteMultipartUploadRequest(
+                    bucket: bucket,
+                    key: remotePath,
+                    uploadId: uploadId,
+                    completeMultipartUpload: CompleteMultipartUpload(parts: sortedParts)
+                )
+            )
+            return .success
+        } catch is CancellationError {
+            await Self.tryAbort(client: client, bucket: bucket, key: remotePath, uploadId: uploadId)
+            return .cancelled
+        } catch {
+            await Self.tryAbort(client: client, bucket: bucket, key: remotePath, uploadId: uploadId)
+            return .failed(error)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private static func makeTicker(
+        task: UploadTask,
+        counter: TransferByteCounter,
+        totalSize: Int64
+    ) -> TransferProgressTicker {
+        TransferProgressTicker(counter: counter) { [task] current in
+            await MainActor.run {
+                task.uploadedBytes = current
+                if totalSize > 0 {
+                    task.progress = min(1.0, Double(current) / Double(totalSize))
+                }
+            }
+        }
+    }
+
+    private static func uploadOnePart(
+        index: Int,
+        fileURL: URL,
+        partSize: Int64,
+        totalSize: Int64,
+        bucket: String,
+        key: String,
+        uploadId: String,
+        client: Client,
+        counter: TransferByteCounter,
+        maxRetry: Int
+    ) async throws -> UploadPart {
+        let start = Int64(index) * partSize
+        let end = min(start + partSize, totalSize)
+        let currentSize = end - start
+        let partNumber = index + 1
+
+        // 读分片内容（在后台线程做磁盘 I/O，不阻塞 MainActor）
+        let partData = try readFileRange(url: fileURL, offset: UInt64(start), length: Int(currentSize))
+
+        var attempt = 0
+        var lastError: Error?
+
+        while attempt <= maxRetry {
+            try Task.checkCancellation()
+
+            // 本次尝试的字节计数器；失败时从全局 counter 回滚
+            let attemptCounter = TransferByteCounter()
+
+            do {
+                var request = UploadPartRequest(
+                    bucket: bucket,
+                    key: key,
+                    partNumber: partNumber,
+                    uploadId: uploadId,
+                    body: .data(partData)
+                )
+                request.progress = ProgressClosure { bytesIncrement, _, _ in
+                    attemptCounter.add(bytesIncrement)
+                    counter.add(bytesIncrement)
+                }
+
+                let result = try await client.uploadPart(request)
+                try Task.checkCancellation()
+
+                return UploadPart(etag: result.etag, partNumber: partNumber)
+            } catch is CancellationError {
+                // 取消不算失败，但本次 attempt 发出去的字节也回滚
+                counter.add(-attemptCounter.total)
+                throw CancellationError()
+            } catch {
+                // 回滚本次尝试的字节
+                counter.add(-attemptCounter.total)
+                lastError = error
+                attempt += 1
+                if attempt > maxRetry { break }
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
 
-        return (uploadTasks.count, completed, uploading, failed)
+        throw lastError ?? NSError(
+            domain: "UploadManager",
+            code: -21,
+            userInfo: [NSLocalizedDescriptionKey: "Part \(partNumber) failed after retries"]
+        )
+    }
+
+    private static func readFileRange(url: URL, offset: UInt64, length: Int) throws -> Data {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        try handle.seek(toOffset: offset)
+        if #available(macOS 13.0, *) {
+            return try handle.read(upToCount: length) ?? Data()
+        } else {
+            return handle.readData(ofLength: length)
+        }
+    }
+
+    private static func tryAbort(client: Client, bucket: String, key: String, uploadId: String) async {
+        do {
+            _ = try await client.abortMultipartUpload(
+                AbortMultipartUploadRequest(
+                    bucket: bucket,
+                    key: key,
+                    uploadId: uploadId
+                )
+            )
+        } catch {
+            print("Abort multipart upload failed (will be cleaned up by OSS lifecycle): \(error)")
+        }
     }
 }

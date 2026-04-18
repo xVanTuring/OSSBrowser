@@ -204,26 +204,6 @@ class DownloadManager: ObservableObject {
     }
 }
 
-// MARK: - Byte Counter
-
-nonisolated final class DownloadByteCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    nonisolated(unsafe) private var _total: Int64 = 0
-
-    func add(_ n: Int64) {
-        lock.lock()
-        _total += n
-        lock.unlock()
-    }
-
-    var total: Int64 {
-        lock.lock()
-        let v = _total
-        lock.unlock()
-        return v
-    }
-}
-
 // MARK: - File Writer Actor
 
 actor DownloadFileWriter {
@@ -262,7 +242,7 @@ actor DownloadFileWriter {
 
 nonisolated final class DownloadSessionDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private struct PartRequest {
-        let counter: DownloadByteCounter
+        let counter: TransferByteCounter
         let continuation: CheckedContinuation<URL, Error>
         var persistedURL: URL?
         var moveError: Error?
@@ -272,7 +252,7 @@ nonisolated final class DownloadSessionDelegate: NSObject, URLSessionDownloadDel
     nonisolated(unsafe) private var partRequests: [Int: PartRequest] = [:]
 
     func register(
-        counter: DownloadByteCounter,
+        counter: TransferByteCounter,
         continuation: CheckedContinuation<URL, Error>,
         for task: URLSessionTask
     ) {
@@ -427,8 +407,16 @@ nonisolated struct DownloadRunner {
             return .failed(error)
         }
 
-        let counter = DownloadByteCounter()
-        let progressTicker = ProgressTicker(task: task, counter: counter)
+        let counter = TransferByteCounter()
+        let totalSizeForProgress = totalSize
+        let progressTicker = TransferProgressTicker(counter: counter) { [task] current in
+            await MainActor.run {
+                task.downloadedBytes = current
+                if totalSizeForProgress > 0 {
+                    task.progress = min(1.0, Double(current) / Double(totalSizeForProgress))
+                }
+            }
+        }
         await progressTicker.start()
 
         do {
@@ -517,7 +505,7 @@ nonisolated struct DownloadRunner {
         urlSession: URLSession,
         sessionDelegate: DownloadSessionDelegate,
         writer: DownloadFileWriter,
-        counter: DownloadByteCounter,
+        counter: TransferByteCounter,
         maxRetry: Int
     ) async throws {
         let start = Int64(index) * partSize
@@ -584,7 +572,7 @@ nonisolated struct DownloadRunner {
         urlRequest: URLRequest,
         urlSession: URLSession,
         sessionDelegate: DownloadSessionDelegate,
-        counter: DownloadByteCounter
+        counter: TransferByteCounter
     ) async throws -> URL {
         let box = URLTaskBox()
 
@@ -606,41 +594,3 @@ nonisolated struct DownloadRunner {
     }
 }
 
-nonisolated final class URLTaskBox: @unchecked Sendable {
-    nonisolated(unsafe) var task: URLSessionTask?
-}
-
-// MARK: - Progress Ticker
-
-actor ProgressTicker {
-    private let task: DownloadTask
-    private let counter: DownloadByteCounter
-    private var tickTask: Task<Void, Never>?
-
-    init(task: DownloadTask, counter: DownloadByteCounter) {
-        self.task = task
-        self.counter = counter
-    }
-
-    func start() {
-        tickTask?.cancel()
-        tickTask = Task { [task, counter] in
-            while !Task.isCancelled {
-                let current = counter.total
-                let total = await MainActor.run { task.totalSize }
-                await MainActor.run {
-                    task.downloadedBytes = current
-                    if total > 0 {
-                        task.progress = min(1.0, Double(current) / Double(total))
-                    }
-                }
-                try? await Task.sleep(nanoseconds: 200_000_000)
-            }
-        }
-    }
-
-    func stop() {
-        tickTask?.cancel()
-        tickTask = nil
-    }
-}
