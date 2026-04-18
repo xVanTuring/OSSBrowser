@@ -31,10 +31,10 @@ class DownloadTask: ObservableObject, Identifiable {
     @Published var startTime: Date?
     @Published var endTime: Date?
 
-    // 分片下载相关
-    let partSize: Int64 = 100 * 1024 * 1024 // 100MB
+    // 分片下载相关（由 DownloadManager 在开始下载时写入）
+    @Published var partSize: Int64 = 0
     @Published var completedParts: Int = 0
-    @Published var totalParts: Int = 0
+    @Published var totalParts: Int = 1
 
     init(fileName: String, key: String, bucketName: String, totalSize: Int64, localURL: URL) {
         self.fileName = fileName
@@ -42,13 +42,6 @@ class DownloadTask: ObservableObject, Identifiable {
         self.bucketName = bucketName
         self.totalSize = totalSize
         self.localURL = localURL
-
-        // 计算分片数
-        if totalSize > 0 {
-            self.totalParts = Int((totalSize + partSize - 1) / partSize)
-        } else {
-            self.totalParts = 1
-        }
     }
 
     var progressPercentage: Int {
