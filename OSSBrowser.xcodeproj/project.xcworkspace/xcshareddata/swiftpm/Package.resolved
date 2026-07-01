@@ -1,6 +1,15 @@
 {
-  "originHash" : "4154f5c2c0b3c0f509960dd9f0123382db69aad03740f840cfae72f4f3f1a5fe",
+  "originHash" : "4ae4f539b32bb423a1e22450b8ee6553f3f774d0477fb6aee21be9c8bd7ed090",
   "pins" : [
+    {
+      "identity" : "alibabacloud-oss-swift-sdk-v2",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/aliyun/alibabacloud-oss-swift-sdk-v2.git",
+      "state" : {
+        "revision" : "f9583dda9ea06e7e592739446e983507497a8094",
+        "version" : "0.2.0"
+      }
+    },
     {
       "identity" : "swift-asn1",
       "kind" : "remoteSourceControl",

@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Xcode — user-specific state (schemes are shared under xcshareddata/)
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+
+# Build output
+DerivedData/
+build/
+.build/
+dist/
+
+# SwiftPM local caches (Package.resolved under xcshareddata/ stays tracked)
+.swiftpm/
+
+# Machine-specific LSP config — regenerate with:
+#   xcode-build-server config -project OSSBrowser.xcodeproj -scheme OSSBrowser
+buildServer.json

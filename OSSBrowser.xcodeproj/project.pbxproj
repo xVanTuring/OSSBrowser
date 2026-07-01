@@ -112,7 +112,7 @@
 			mainGroup = 338C94AB2EE85123006E5F2A;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				3382BDCD2F93272C00F20434 /* XCLocalSwiftPackageReference "../alibabacloud-oss-swift-sdk-v2" */,
+				3382BDCD2F93272C00F20434 /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 338C94B52EE85123006E5F2A /* Products */;
@@ -358,20 +358,26 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		3382BDCD2F93272C00F20434 /* XCLocalSwiftPackageReference "../alibabacloud-oss-swift-sdk-v2" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../alibabacloud-oss-swift-sdk-v2";
+/* Begin XCRemoteSwiftPackageReference section */
+		3382BDCD2F93272C00F20434 /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aliyun/alibabacloud-oss-swift-sdk-v2.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.2.0;
+			};
 		};
-/* End XCLocalSwiftPackageReference section */
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		3382BDCE2F93272D00F20434 /* AlibabaCloudOSS */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 3382BDCD2F93272C00F20434 /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */;
 			productName = AlibabaCloudOSS;
 		};
 		3382BDD02F93272D00F20434 /* AlibabaCloudOSSExtension */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 3382BDCD2F93272C00F20434 /* XCRemoteSwiftPackageReference "alibabacloud-oss-swift-sdk-v2" */;
 			productName = AlibabaCloudOSSExtension;
 		};
 /* End XCSwiftPackageProductDependency section */
