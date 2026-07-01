@@ -39,3 +39,7 @@ xcodebuild -project OSSBrowser.xcodeproj -scheme OSSBrowser -configuration Relea
 ```
 
 App 图标源文件为 [`design/AppIcon.svg`](design/AppIcon.svg),改完后运行 [`scripts/make-icon.sh`](scripts/make-icon.sh) 重新生成图标集(需要 `brew install librsvg`)。
+
+## 许可
+
+本项目采用 **GNU General Public License v3.0** 协议,详见 [LICENSE](LICENSE)。
