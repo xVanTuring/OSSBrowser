@@ -251,7 +251,7 @@ class OSSFileService: ObservableObject {
             throw OSSError.clientNotInitialized
         }
 
-        let directoryKey = currentPath.isEmpty ? "\(name)/" : "\(currentPath)\(name)/"
+        let directoryKey = currentPath.isEmpty ? "\(name)/" : "\(currentPath)/\(name)/"
 
         // 创建一个空对象表示目录
         let result = try await client.putObject(PutObjectRequest(
