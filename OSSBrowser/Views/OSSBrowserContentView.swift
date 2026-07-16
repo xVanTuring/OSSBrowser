@@ -73,6 +73,7 @@ struct OSSBrowserContentView: View {
                         onInvalidFavoritePath: { path in
                             handleInvalidFavoritePath(bucketName: bucket.name, path: path)
                         },
+                        inspectorPresented: $inspectShow,
                         onFileCountUpdate: { itemCount, selectedCount, isLoading in
                             // 传递文件状态信息到详情面板
                             currentFileCount = itemCount
@@ -104,16 +105,6 @@ struct OSSBrowserContentView: View {
             } else {
                 Text("选择一个 Bucket 查看详情")
                     .foregroundColor(.secondary)
-            }
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    inspectShow.toggle()
-                } label: {
-                    Label("详情栏", systemImage: "sidebar.right")
-                }
-                .help(inspectShow ? "隐藏详情栏" : "显示详情栏")
             }
         }
         .navigationSplitViewStyle(.prominentDetail)

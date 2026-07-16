@@ -18,6 +18,8 @@ struct OSSFileBrowserContent: View {
     /// 收藏路径在导航后被发现已不存在时回调（用于提示用户删除该收藏）
     let onInvalidFavoritePath: ((String) -> Void)?
     let onFileCountUpdate: (Int, Int, Bool) -> Void
+    /// 详情栏（inspector）显示状态，由父视图持有
+    @Binding var inspectorPresented: Bool
 
     @StateObject private var fileService: OSSFileService
     @ObservedObject private var downloadManager = DownloadManager.shared
@@ -36,12 +38,14 @@ struct OSSFileBrowserContent: View {
         bucket: BucketItem, config: OSSConfiguration,
         initialPath: String? = nil,
         onInvalidFavoritePath: ((String) -> Void)? = nil,
+        inspectorPresented: Binding<Bool>,
         onFileCountUpdate: @escaping (Int, Int, Bool) -> Void
     ) {
         self.bucket = bucket
         self.config = config
         self.initialPath = initialPath
         self.onInvalidFavoritePath = onInvalidFavoritePath
+        self._inspectorPresented = inspectorPresented
         self.onFileCountUpdate = onFileCountUpdate
         self._fileService = StateObject(
             wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
@@ -221,6 +225,12 @@ struct OSSFileBrowserContent: View {
                     }
                 }
                 .help("查看上传进度")
+
+                // 详情栏（inspector）切换 —— 放最右
+                Button(action: { inspectorPresented.toggle() }) {
+                    Label("详情栏", systemImage: "sidebar.right")
+                }
+                .help(inspectorPresented ? "隐藏详情栏" : "显示详情栏")
             }
         }
         // FilePreviewWindow sheet (用于传统预览模式)
@@ -489,6 +499,7 @@ struct OSSFileBrowserContent: View {
             accessKeySecret: "",
             region: "cn-hangzhou"
         ),
+        inspectorPresented: .constant(true),
         onFileCountUpdate: { _, _, _ in }
     )
 }
