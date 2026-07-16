@@ -14,31 +14,86 @@ struct PDFPreview: View {
     let config: OSSConfiguration
 
     @State private var document: PDFDocument?
-    @State private var isLoading = true
     @State private var loadError: Error?
+    @State private var confirmedLargeLoad = false
+
+    // 大 PDF 阈值：50MB（超过则加载前二次确认，避免长时间空转无反馈）
+    private let sizeThreshold: Int64 = 50 * 1024 * 1024
 
     var body: some View {
         Group {
             if let document = document {
                 PDFKitRepresentedView(document: document)
-            } else if isLoading {
-                VStack(spacing: 12) {
-                    ProgressView().scaleEffect(1.3)
-                    Text("正在加载 PDF…")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if file.size > sizeThreshold && !confirmedLargeLoad {
+                largeFilePrompt
             } else if let loadError = loadError {
                 PreviewMessageView(
                     systemImage: "exclamationmark.triangle",
                     title: "加载失败",
                     subtitle: loadError.localizedDescription,
-                    tint: .orange
+                    tint: .orange,
+                    primaryActionTitle: "重试",
+                    primaryAction: { startLoad() }
                 )
+            } else {
+                loadingView
             }
         }
-        .task { await load() }
+        .task {
+            // 小文件自动加载；大文件等待用户确认
+            if file.size <= sizeThreshold {
+                startLoad()
+            }
+        }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView().scaleEffect(1.3)
+            Text("正在加载 PDF…")
+                .font(.callout)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var largeFilePrompt: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "doc.richtext")
+                .font(.system(size: 60))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 8) {
+                Text("大 PDF 文件")
+                    .font(.title2)
+                    .fontWeight(.medium)
+
+                Text("文件大小: \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+
+            Text("加载较大的 PDF 可能需要一些时间")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Button {
+                confirmedLargeLoad = true
+                startLoad()
+            } label: {
+                Label("加载 PDF", systemImage: "arrow.down.circle")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// 重新触发加载（清空文档与错误后重新拉取）
+    private func startLoad() {
+        document = nil
+        loadError = nil
+        Task { await load() }
     }
 
     private func load() async {
@@ -53,12 +108,10 @@ struct PDFPreview: View {
             }
             await MainActor.run {
                 self.document = doc
-                self.isLoading = false
             }
         } catch {
             await MainActor.run {
                 self.loadError = error
-                self.isLoading = false
             }
         }
     }

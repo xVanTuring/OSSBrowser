@@ -15,25 +15,38 @@ struct TextPreview: View {
     @State private var content: String?
     @State private var isLoading = true
     @State private var loadError: Error?
+    // 自动换行：默认对非代码文本换行，代码保持原样便于对齐
+    @State private var wrapLines: Bool
+    @State private var fontSize: CGFloat = 13
 
     // 最多预览 512KB
     private let maxBytes = 512 * 1024
 
+    // 保持对外初始化签名不变（file / bucketName / config），
+    // 仅用于根据文件类型设置换行默认值。
+    init(file: OSSFile, bucketName: String, config: OSSConfiguration) {
+        self.file = file
+        self.bucketName = bucketName
+        self.config = config
+        _wrapLines = State(initialValue: file.category != .code)
+    }
+
     private var isTruncated: Bool {
         file.size > Int64(maxBytes)
+    }
+
+    private var textFont: Font {
+        .system(size: fontSize, design: .monospaced)
     }
 
     var body: some View {
         Group {
             if let content = content {
                 VStack(spacing: 0) {
-                    ScrollView([.vertical, .horizontal]) {
-                        Text(content)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                    }
+                    toolbar
+                    Divider()
+
+                    textScrollView(content)
 
                     if isTruncated {
                         Divider()
@@ -58,11 +71,82 @@ struct TextPreview: View {
                     systemImage: "exclamationmark.triangle",
                     title: "加载失败",
                     subtitle: loadError.localizedDescription,
-                    tint: .orange
+                    tint: .orange,
+                    primaryActionTitle: "重试",
+                    primaryAction: { retry() }
                 )
             }
         }
         .task { await load() }
+    }
+
+    // MARK: - 子视图
+
+    private var toolbar: some View {
+        HStack(spacing: 10) {
+            Toggle("自动换行", isOn: $wrapLines)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+            Spacer()
+
+            // 字号调节
+            Button {
+                fontSize = max(9, fontSize - 1)
+            } label: {
+                Image(systemName: "textformat.size.smaller")
+            }
+            .help("减小字号")
+
+            Text("\(Int(fontSize))")
+                .font(.caption.monospacedDigit())
+                .foregroundColor(.secondary)
+                .frame(width: 20)
+
+            Button {
+                fontSize = min(24, fontSize + 1)
+            } label: {
+                Image(systemName: "textformat.size.larger")
+            }
+            .help("增大字号")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+
+    @ViewBuilder
+    private func textScrollView(_ content: String) -> some View {
+        if wrapLines {
+            // 换行：仅纵向滚动，长段落自动折行
+            ScrollView(.vertical) {
+                Text(content)
+                    .font(textFont)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+        } else {
+            // 不换行：横竖双向滚动，保持长行原样
+            ScrollView([.vertical, .horizontal]) {
+                Text(content)
+                    .font(textFont)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }
+        }
+    }
+
+    // MARK: - 逻辑
+
+    /// 重新触发加载
+    private func retry() {
+        content = nil
+        loadError = nil
+        isLoading = true
+        Task { await load() }
     }
 
     private func load() async {

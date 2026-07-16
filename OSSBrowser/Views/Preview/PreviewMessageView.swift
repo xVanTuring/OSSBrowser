@@ -13,6 +13,13 @@ struct PreviewMessageView: View {
     var subtitle: String? = nil
     var tint: Color = .secondary
 
+    // 可选操作按钮槽位（默认 nil，兼容现有调用）。
+    // 主要按钮通常用于「重试」，次要按钮可用于「下载」等。
+    var primaryActionTitle: String? = nil
+    var primaryAction: (() -> Void)? = nil
+    var secondaryActionTitle: String? = nil
+    var secondaryAction: (() -> Void)? = nil
+
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: systemImage)
@@ -30,6 +37,21 @@ struct PreviewMessageView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 380)
+            }
+
+            if primaryAction != nil || secondaryAction != nil {
+                HStack(spacing: 12) {
+                    if let title = primaryActionTitle, let action = primaryAction {
+                        Button(title, action: action)
+                            .buttonStyle(.borderedProminent)
+                    }
+                    if let title = secondaryActionTitle, let action = secondaryAction {
+                        Button(title, action: action)
+                            .buttonStyle(.bordered)
+                    }
+                }
+                .controlSize(.large)
+                .padding(.top, 4)
             }
         }
         .padding()

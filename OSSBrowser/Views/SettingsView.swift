@@ -16,15 +16,8 @@ enum PreviewSettings {
 struct SettingsView: View {
     @AppStorage(PreviewSettings.useQuickLookKey) private var useQuickLook: Bool = false
 
+    // 目前仅有「预览」一组设置，直接用 Form；将来有第二组设置再引入分页
     var body: some View {
-        TabView {
-            generalTab
-                .tabItem { Label("预览", systemImage: "eye") }
-        }
-        .frame(width: 460, height: 220)
-    }
-
-    private var generalTab: some View {
         Form {
             Picker("文件预览方式", selection: $useQuickLook) {
                 Text("内置预览").tag(false)
@@ -40,6 +33,7 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(20)
+        .frame(width: 460)
     }
 }
 

@@ -45,13 +45,23 @@ struct VideoPreview: View {
                     systemImage: "exclamationmark.triangle",
                     title: "加载失败",
                     subtitle: loadError.localizedDescription,
-                    tint: .orange
+                    tint: .orange,
+                    primaryActionTitle: "重试",
+                    primaryAction: { retry() }
                 )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task { await load() }
         .onDisappear { player?.pause() }
+    }
+
+    /// 重新触发加载
+    private func retry() {
+        loadError = nil
+        unsupported = false
+        isLoading = true
+        Task { await load() }
     }
 
     private func load() async {

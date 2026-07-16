@@ -14,87 +14,80 @@ struct ImagePreview: View {
     let bucketName: String
     let config: OSSConfiguration
 
-    @State private var imageURL: URL?
+    @State private var loadedImage: NSImage?
     @State private var isLoadingImage = false
     @State private var imageLoadError: Error?
     @State private var shouldLoadLargeImage = false
     @State private var imageDimensions: CGSize?
 
-    // 图片大小阈值：10MB
-    private let imageThreshold: Int64 = 5 * 1024 * 1024
+    // 图片大小阈值：20MB（超过则不自动加载，先给出提示，避免大图长时间空转无反馈）
+    private let imageThreshold: Int64 = 20 * 1024 * 1024
 
     var body: some View {
         VStack(spacing: 0) {
             // 主内容区域
-            GeometryReader { geometry in
-                ZStack {
-                    if let imageURL = imageURL {
-                        AsyncImage(url: imageURL) { image in
-                            if let dimensions = imageDimensions,
-                               shouldShowActualSize(dimensions: dimensions, containerSize: geometry.size) {
-                                // 小图：显示实际尺寸，居中
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: dimensions.width, height: dimensions.height)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            } else {
-                                // 大图：适配容器大小
-                                image
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
-                        } placeholder: {
-                            ProgressView()
-                                .scaleEffect(1.5)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        .clipped()
-                    } else if file.size > imageThreshold && !shouldLoadLargeImage {
-                        // 大图片提示
-                        largeImagePrompt
-                    } else if isLoadingImage {
-                        VStack {
-                            Spacer()
-                            ProgressView()
-                                .scaleEffect(1.5)
-                            Spacer()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if let error = imageLoadError {
-                        errorView(error: error)
-                    }
+            ZStack {
+                if let loadedImage {
+                    ZoomableImageView(
+                        image: Image(nsImage: loadedImage),
+                        pixelSize: imageDimensions ?? loadedImage.size,
+                        showsCheckerboard: showsCheckerboard
+                    )
+                } else if file.size > imageThreshold && !shouldLoadLargeImage {
+                    // 大图片提示
+                    largeImagePrompt
+                } else if isLoadingImage {
+                    loadingView
+                } else if let error = imageLoadError {
+                    errorView(error: error)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // 图片信息栏 - 始终显示
-            HStack {
-                if let dimensions = imageDimensions {
-                    Text("尺寸: \(Int(dimensions.width)) × \(Int(dimensions.height))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("尺寸: N/A")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                Text("文件大小: \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
+            infoBar
         }
         .onAppear {
             if file.size <= imageThreshold {
                 loadPreviewImage()
             }
         }
+    }
+
+    // MARK: - 子视图
+
+    private var infoBar: some View {
+        HStack {
+            if let dimensions = imageDimensions {
+                Text("尺寸: \(Int(dimensions.width)) × \(Int(dimensions.height))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("尺寸: N/A")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Text("文件大小: \(ByteCountFormatter.string(fromByteCount: file.size, countStyle: .file))")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.9))
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .scaleEffect(1.3)
+            Text("正在加载…")
+                .font(.callout)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
@@ -114,50 +107,44 @@ struct ImagePreview: View {
                     .foregroundColor(.secondary)
             }
 
-            Button(action: {
+            Button {
                 shouldLoadLargeImage = true
                 loadPreviewImage()
-            }) {
-                HStack {
-                    if isLoadingImage {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text("加载中...")
-                    } else {
-                        Image(systemName: "arrow.down.circle")
-                        Text("加载图片")
+            } label: {
+                if isLoadingImage {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("加载中…")
                     }
+                } else {
+                    Label("加载图片", systemImage: "arrow.down.circle")
                 }
-                .font(.callout)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(8)
             }
-            .buttonStyle(PlainButtonStyle())
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .disabled(isLoadingImage)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private func errorView(error: Error) -> some View {
-        VStack(spacing: 20) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 60))
-                .foregroundColor(.orange)
+        // 复用通用提示视图，保证与其它预览视觉一致，并提供「重试」
+        PreviewMessageView(
+            systemImage: "exclamationmark.triangle",
+            title: "加载失败",
+            subtitle: error.localizedDescription,
+            tint: .orange,
+            primaryActionTitle: "重试",
+            primaryAction: { loadPreviewImage() }
+        )
+    }
 
-            Text("加载失败")
-                .font(.title2)
-                .fontWeight(.medium)
+    // MARK: - 逻辑
 
-            Text(error.localizedDescription)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    // 可能包含透明区域的格式，显示棋盘格背景便于分辨透明区域
+    private var showsCheckerboard: Bool {
+        let transparent = ["png", "gif", "svg", "webp", "tiff", "tif", "ico", "heic", "heif"]
+        return transparent.contains((file.name as NSString).pathExtension.lowercased())
     }
 
     private func isImageFile(_ fileName: String) -> Bool {
@@ -171,54 +158,33 @@ struct ImagePreview: View {
 
         isLoadingImage = true
         imageLoadError = nil
+        loadedImage = nil
         imageDimensions = nil // 重置尺寸信息
 
         Task {
-            await generatePresignedURL()
+            await loadImageContent()
         }
     }
 
     @MainActor
-    private func generatePresignedURL() async {
+    private func loadImageContent() async {
         do {
-            imageURL = try await OSSPresigner.presignedURL(
+            let url = try await OSSPresigner.presignedURL(
                 bucket: bucketName, key: file.key, config: config)
-            isLoadingImage = false
+            let (data, _) = try await URLSession.shared.data(from: url)
 
-            // 加载图片尺寸信息
-            await loadImageDimensions()
+            guard let nsImage = NSImage(data: data) else {
+                throw NSError(
+                    domain: "ImagePreview", code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "无法解析图片内容"])
+            }
+
+            imageDimensions = nsImage.size
+            loadedImage = nsImage
+            isLoadingImage = false
         } catch {
             imageLoadError = error
             isLoadingImage = false
         }
-    }
-
-    @MainActor
-    private func loadImageDimensions() async {
-        guard let imageURL = imageURL else { return }
-
-        do {
-            let (data, _) = try await URLSession.shared.data(from: imageURL)
-
-            // 使用 NSImage 获取图片尺寸
-            if let nsImage = NSImage(data: data) {
-                let dimensions = CGSize(width: nsImage.size.width, height: nsImage.size.height)
-                imageDimensions = dimensions
-            }
-        } catch {
-            // 如果获取尺寸失败，不影响图片显示，只是不显示尺寸信息
-            print("Failed to load image dimensions: \(error)")
-        }
-    }
-
-    // 判断是否应该显示实际尺寸
-    private func shouldShowActualSize(dimensions: CGSize, containerSize: CGSize) -> Bool {
-        // 减去信息栏高度（约 40 像素）和一些边距
-        let availableHeight = containerSize.height - 80
-        let availableWidth = containerSize.width - 40
-
-        // 如果图片明显小于可用空间，显示实际尺寸
-        // 使用 80% 作为阈值，避免图片几乎填满屏幕时还显示原始尺寸
-        return dimensions.width <= availableWidth * 0.8 && dimensions.height <= availableHeight * 0.8
     }
 }

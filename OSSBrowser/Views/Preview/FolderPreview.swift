@@ -24,12 +24,20 @@ struct FolderPreview: View {
                 Text(file.name)
                     .font(.headline)
                     .foregroundColor(.secondary)
+                    .textSelection(.enabled)
             }
 
-            Text("文件夹内的内容需要打开查看")
+            Text("文件夹本身没有可预览的内容。")
+                .font(.callout)
+                .foregroundColor(.secondary)
+
+            Text("关闭此预览后，在文件列表中双击该文件夹即可查看其中的文件。")
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 }

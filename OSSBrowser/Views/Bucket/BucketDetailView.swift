@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct BucketDetailView: View {
     let bucket: BucketItem
@@ -17,25 +18,39 @@ struct BucketDetailView: View {
         VStack(alignment: .leading, spacing: 20) {
             // Bucket 信息
             VStack(alignment: .leading, spacing: 10) {
-                Text(bucket.name)
-                    .font(.title2)
-                    .fontWeight(.bold)
+                HStack(spacing: 6) {
+                    Text(bucket.name)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .textSelection(.enabled)
+
+                    Button {
+                        copyToPasteboard(bucket.name)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("复制桶名")
+                }
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Label("Region", systemImage: "location")
+                        Label("区域", systemImage: "location")
                         Spacer()
                         Text(bucket.region)
+                            .textSelection(.enabled)
                     }
                     HStack {
-                        Label("Storage", systemImage: "externaldrive")
+                        Label("存储类型", systemImage: "externaldrive")
                         Spacer()
                         Text(bucket.storageClass)
+                            .textSelection(.enabled)
                     }
                     HStack {
-                        Label("Created", systemImage: "calendar")
+                        Label("创建时间", systemImage: "calendar")
                         Spacer()
                         Text(bucket.creationDate, style: .date)
+                            .textSelection(.enabled)
                     }
                 }
                 .font(.body)
@@ -74,6 +89,11 @@ struct BucketDetailView: View {
         }
         .padding()
         .navigationTitle("详情")
+    }
+
+    private func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 }
 
