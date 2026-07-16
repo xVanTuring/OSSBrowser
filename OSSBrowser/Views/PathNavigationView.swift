@@ -11,68 +11,84 @@ struct PathNavigationView: View {
     let bucketName: String
     let currentPath: String
     let onPathClick: (String) -> Void
+    var isFavorite: Bool = false
+    var onToggleFavorite: (() -> Void)? = nil
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: true) {
-            HStack(spacing: 8) {
-                // 根路径 - 桶名
-                Button(action: {
-                    onPathClick("")
-                }) {
-                    Text(bucketName)
-                        .font(.system(size: 13))
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(NSColor.controlBackgroundColor))
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
-                .onHover { isHovering in
-                    if isHovering {
-                        NSCursor.pointingHand.set()
-                    } else {
-                        NSCursor.arrow.set()
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: true) {
+                HStack(spacing: 8) {
+                    // 根路径 - 桶名
+                    Button(action: {
+                        onPathClick("")
+                    }) {
+                        Text(bucketName)
+                            .font(.system(size: 13))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color(NSColor.controlBackgroundColor))
+                            )
                     }
-                }
-
-                // 分隔符和路径组件
-                if !currentPath.isEmpty {
-                    ForEach(pathComponents, id: \.self) { component in
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-
-                        Button(action: {
-                            onPathClick(pathToComponent[component] ?? "")
-                        }) {
-                            Text(component)
-                                .font(.system(size: 13))
-                                .foregroundColor(.primary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(isLastPathComponent(component) ?
-                                              Color(NSColor.selectedControlColor) :
-                                              Color(NSColor.controlBackgroundColor))
-                                )
+                    .buttonStyle(PlainButtonStyle())
+                    .onHover { isHovering in
+                        if isHovering {
+                            NSCursor.pointingHand.set()
+                        } else {
+                            NSCursor.arrow.set()
                         }
-                        .buttonStyle(PlainButtonStyle())
-                        .onHover { isHovering in
-                            if isHovering {
-                                NSCursor.pointingHand.set()
-                            } else {
-                                NSCursor.arrow.set()
+                    }
+
+                    // 分隔符和路径组件
+                    if !currentPath.isEmpty {
+                        ForEach(pathComponents, id: \.self) { component in
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+
+                            Button(action: {
+                                onPathClick(pathToComponent[component] ?? "")
+                            }) {
+                                Text(component)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(isLastPathComponent(component) ?
+                                                  Color(NSColor.selectedControlColor) :
+                                                  Color(NSColor.controlBackgroundColor))
+                                    )
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .onHover { isHovering in
+                                if isHovering {
+                                    NSCursor.pointingHand.set()
+                                } else {
+                                    NSCursor.arrow.set()
+                                }
                             }
                         }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+
+            if let onToggleFavorite {
+                Spacer(minLength: 0)
+
+                Button(action: onToggleFavorite) {
+                    Image(systemName: isFavorite ? "star.fill" : "star")
+                        .foregroundColor(isFavorite ? .yellow : .secondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.trailing, 12)
+                .help(isFavorite ? "取消收藏当前路径" : "收藏当前路径")
+            }
         }
         .frame(height: 32)
         .background(Color(NSColor.controlBackgroundColor).opacity(0.8))

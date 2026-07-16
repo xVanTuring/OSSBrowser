@@ -203,6 +203,21 @@ class OSSFileService: ObservableObject {
         files = sortFiles(files + newFiles)
     }
 
+    /// 检查某个目录路径下是否仍存在对象（用于校验收藏路径是否已被删除）
+    func checkPathExists(_ path: String) async throws -> Bool {
+        guard let client = client else {
+            throw OSSError.clientNotInitialized
+        }
+        guard !path.isEmpty else { return true }
+
+        let result = try await client.listObjectsV2(ListObjectsV2Request(
+            bucket: bucketName,
+            maxKeys: 1,
+            prefix: buildPrefix(for: path)
+        ))
+        return !(result.contents?.isEmpty ?? true)
+    }
+
     func changeDirectory(_ file: OSSFile) async throws {
         if file.isDirectory {
             try await listFiles(at: file.path)

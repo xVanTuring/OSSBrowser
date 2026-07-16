@@ -22,6 +22,7 @@ struct BucketListView: View {
                     .foregroundColor(.secondary)
             }
             .tag(bucket)
+            .listRowSeparator(.hidden)
         }
         .navigationTitle("Buckets")
         .overlay {

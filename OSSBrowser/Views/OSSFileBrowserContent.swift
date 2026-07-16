@@ -13,11 +13,16 @@ import QuickLook
 struct OSSFileBrowserContent: View {
     let bucket: BucketItem
     let config: OSSConfiguration
+    /// 收藏导航时指定的初始路径；为 nil 时从 Bucket 根目录加载
+    let initialPath: String?
+    /// 收藏路径在导航后被发现已不存在时回调（用于提示用户删除该收藏）
+    let onInvalidFavoritePath: ((String) -> Void)?
     let onFileCountUpdate: (Int, Int, Bool) -> Void
 
     @StateObject private var fileService: OSSFileService
     @ObservedObject private var downloadManager = DownloadManager.shared
     @ObservedObject private var uploadManager = UploadManager.shared
+    @ObservedObject private var favoritesManager = FavoritesManager.shared
     @State private var selectedFiles: Set<String> = []
     @State private var isCreatingFolder = false
     @State private var showingDownloadProgress = false
@@ -29,10 +34,14 @@ struct OSSFileBrowserContent: View {
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
+        initialPath: String? = nil,
+        onInvalidFavoritePath: ((String) -> Void)? = nil,
         onFileCountUpdate: @escaping (Int, Int, Bool) -> Void
     ) {
         self.bucket = bucket
         self.config = config
+        self.initialPath = initialPath
+        self.onInvalidFavoritePath = onInvalidFavoritePath
         self.onFileCountUpdate = onFileCountUpdate
         self._fileService = StateObject(
             wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
@@ -78,12 +87,28 @@ struct OSSFileBrowserContent: View {
                     Task {
                         try? await fileService.listFiles(at: path)
                     }
+                },
+                isFavorite: favoritesManager.isFavorite(
+                    configId: config.id, bucketName: bucket.name, path: fileService.currentPath),
+                onToggleFavorite: {
+                    favoritesManager.toggleFavorite(
+                        configId: config.id, bucketName: bucket.name, path: fileService.currentPath)
                 }
             )
         }
         .onAppear {
             Task {
-                try? await fileService.listFiles()
+                if let initialPath {
+                    try? await fileService.listFiles(at: initialPath)
+                    if !initialPath.isEmpty {
+                        let exists = (try? await fileService.checkPathExists(initialPath)) ?? true
+                        if !exists {
+                            onInvalidFavoritePath?(initialPath)
+                        }
+                    }
+                } else {
+                    try? await fileService.listFiles()
+                }
             }
 
             // 设置上传完成回调
