@@ -180,29 +180,9 @@ struct ImagePreview: View {
 
     @MainActor
     private func generatePresignedURL() async {
-        let ossConfig = Configuration.default()
-            .withCredentialsProvider(StaticCredentialsProvider(
-                accessKeyId: config.accessKeyId,
-                accessKeySecret: config.accessKeySecret
-            ))
-            .withRegion(config.region)
-
-        if let endpoint = config.endpoint {
-            ossConfig.withEndpoint(endpoint)
-        }
-
-        let client = Client(ossConfig)
-
         do {
-            let presignResult = try await client.presign(
-                GetObjectRequest(
-                    bucket: bucketName,
-                    key: file.key
-                ),
-                Date().addingTimeInterval(3600) // 1小时有效期
-            )
-
-            imageURL = URL(string: presignResult.url)
+            imageURL = try await OSSPresigner.presignedURL(
+                bucket: bucketName, key: file.key, config: config)
             isLoadingImage = false
 
             // 加载图片尺寸信息

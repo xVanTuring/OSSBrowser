@@ -55,35 +55,32 @@ struct OSSFile: Identifiable, Hashable {
         return (name as NSString).pathExtension.lowercased()
     }
 
+    // 文件分类（统一由 FileTypeHelper 推导）
+    var category: FileCategory {
+        isDirectory ? .folder : FileCategory.from(extension: fileExtension)
+    }
+
     // 文件类型图标
     var iconName: String {
-        if isDirectory {
-            return "folder.fill"
-        }
-
-        switch fileExtension {
-        case "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg":
-            return "photo.fill"
-        case "mp4", "mov", "avi", "mkv", "wmv", "flv":
-            return "video.fill"
-        case "mp3", "wav", "aac", "m4a", "flac":
-            return "music.note"
-        case "pdf":
-            return "doc.text.fill"
-        case "doc", "docx":
-            return "doc.text"
-        case "xls", "xlsx":
-            return "chart.bar.fill"
-        case "ppt", "pptx":
-            return "play.rectangle.fill"
-        case "zip", "rar", "7z", "tar", "gz":
-            return "archivebox.fill"
-        case "txt", "md", "rtf":
-            return "doc.plaintext"
-        case "swift", "py", "js", "html", "css", "json", "xml":
-            return "code"
-        default:
-            return "doc.fill"
-        }
+        category.iconName
     }
+
+    // 中文类型名称
+    var typeLabel: String {
+        category.displayName
+    }
+
+    // 内联预览方式
+    var previewKind: FilePreviewKind {
+        category.previewKind
+    }
+}
+
+// MARK: - 内联新建文件夹草稿
+extension OSSFile {
+    /// 内联「新建文件夹」草稿行使用的哨兵 key（正常对象 key 不会包含该字符）
+    static let draftFolderKey = "\u{0}__oss_browser_new_folder__"
+
+    /// 是否为内联新建草稿行
+    var isDraftFolder: Bool { key == OSSFile.draftFolderKey }
 }

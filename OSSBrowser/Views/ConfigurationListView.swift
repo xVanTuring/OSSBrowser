@@ -20,28 +20,51 @@ struct ConfigurationListView: View {
         NavigationSplitView {
             // 左侧配置列表
             List(configManager.configurations, id: \.id, selection: $selectedConfig) { config in
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 12) {
+                    Image(systemName: "externaldrive.fill")
+                        .font(.title3)
+                        .foregroundStyle(.tint)
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(config.name)
                             .font(.headline)
-                        Text("Region: \(config.region)")
+                            .lineLimit(1)
+                        Text(config.region)
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 8)
 
                     Button {
-                        selectedConfig = config
-                        openMainWindow()
+                        openBrowser(for: config)
                     } label: {
-                        Image(systemName: "arrow.right")
+                        Image(systemName: "arrow.up.forward")
                     }
                     .buttonStyle(.bordered)
-
-                    .buttonStyle(BorderlessButtonStyle())
+                    .controlSize(.small)
                     .help("打开 OSS 浏览器")
-
+                }
+                .padding(.vertical, 2)
+                .contextMenu {
+                    Button {
+                        openBrowser(for: config)
+                    } label: {
+                        Label("打开", systemImage: "arrow.up.forward")
+                    }
+                    Button {
+                        selectedConfig = configManager.duplicateConfiguration(config)
+                    } label: {
+                        Label("复制配置", systemImage: "plus.square.on.square")
+                    }
+                    Divider()
+                    Button(role: .destructive) {
+                        configToDelete = config
+                        showingDeleteAlert = true
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
                 }
                 .tag(config)
             }
@@ -53,6 +76,12 @@ struct ConfigurationListView: View {
                         Image(systemName: "plus")
                     }
                     .help("添加配置")
+
+                    Button(action: { duplicateSelectedConfiguration() }) {
+                        Image(systemName: "plus.square.on.square")
+                    }
+                    .disabled(selectedConfig == nil)
+                    .help("复制配置")
 
                     Button(action: { deleteSelectedConfiguration() }) {
                         Image(systemName: "minus")
@@ -131,6 +160,9 @@ struct ConfigurationListView: View {
                 Text("确定要删除配置 \"\(config.name)\" 吗？此操作无法撤销。")
             }
         }
+        // 首页固定尺寸，禁止拖拽调整大小与全屏
+        .frame(width: 760, height: 540)
+        .fixedSizeWindow()
     }
 
     private func addNewConfiguration() {
@@ -146,11 +178,16 @@ struct ConfigurationListView: View {
         }
     }
 
-    private func openMainWindow() {
-        // 使用 SwiftUI 的 openWindow API 打开新窗口
-        if let config = selectedConfig {
-            openWindow(value: config)
-        }
+    private func openBrowser(for config: OSSConfiguration) {
+        // 使用 SwiftUI 的 openWindow API 打开浏览器窗口
+        selectedConfig = config
+        openWindow(value: config)
+    }
+
+    private func duplicateSelectedConfiguration() {
+        guard let config = selectedConfig else { return }
+        let copy = configManager.duplicateConfiguration(config)
+        selectedConfig = copy
     }
 }
 

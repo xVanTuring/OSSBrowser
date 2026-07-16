@@ -29,6 +29,10 @@ struct FileListView: View {
     let onCopyPresignedURL: (OSSFile) -> Void
     let onRenameFile: (OSSFile, String) -> Void
     let onPreview: (OSSFile) -> Void
+    @Binding var isCreatingFolder: Bool
+    let onCreateFolder: (String) -> Void
+    let onRefresh: () -> Void
+    let onUpload: () -> Void
 
     @State private var showingDeleteAlert = false
     @State private var filesToDelete: [OSSFile] = []
@@ -71,8 +75,43 @@ struct FileListView: View {
 
     @State private var emptyFolderDropActive = false
 
+    // 当前目录下已存在的文件夹名（小写），用于内联新建的重名校验
+    private var existingFolderNames: Set<String> {
+        Set(files.filter { $0.isDirectory }.map { $0.name.lowercased() })
+    }
+
+    // 空白处 / 空文件夹的背景右键菜单
+    @ViewBuilder
+    private func backgroundContextMenu() -> some View {
+        Button {
+            isCreatingFolder = true
+        } label: {
+            Label("新建文件夹", systemImage: "folder.badge.plus")
+        }
+        Button {
+            onUpload()
+        } label: {
+            Label("上传文件…", systemImage: "arrow.up.doc")
+        }
+        Divider()
+        Button {
+            onRefresh()
+        } label: {
+            Label("刷新", systemImage: "arrow.clockwise")
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            // 内联「新建文件夹」行
+            if isCreatingFolder {
+                NewFolderInlineRow(
+                    existingNames: existingFolderNames,
+                    onCommit: { name in onCreateFolder(name) },
+                    onCancel: { isCreatingFolder = false }
+                )
+            }
+
             // 文件列表
             if isLoading && files.isEmpty {
                 FileListStates.LoadingView()
@@ -82,6 +121,7 @@ struct FileListView: View {
                         dropHandler.handleDrop(providers: providers)
                     }
                     .background(emptyFolderDropActive ? Color.accentColor.opacity(0.1) : Color.clear)
+                    .contextMenu { backgroundContextMenu() }
             } else {
                 FileTable(
                     files: files,
@@ -91,10 +131,14 @@ struct FileListView: View {
                     keyboardHandler: keyboardHandler,
                     onLoadMore: hasMore ? onLoadMore : nil
                 )
-                .contextMenu(forSelectionType: OSSFile.ID.self) { _ in
+                .contextMenu(forSelectionType: OSSFile.ID.self) { clickedItems in
+                    if clickedItems.isEmpty {
+                        // 右键空白处 → 背景菜单
+                        backgroundContextMenu()
+                    } else {
                     FileContextMenu(
                         files: files,
-                        selectedFiles: selectedFiles,
+                        selectedFiles: clickedItems,
                         onDownloadFile: onDownloadFile,
                         onDownloadFolder: onDownloadFolder,
                         onCopyPath: onCopyPath,
@@ -112,6 +156,7 @@ struct FileListView: View {
                         onBatchDelete: handleBatchDelete,
                         onBatchDownload: handleBatchDownload
                     )
+                    }
                 } primaryAction: { items in
                     // 双击处理
                     if let fileId = items.first,
@@ -227,6 +272,10 @@ struct FileListView: View {
         onCopyURL: { _ in },
         onCopyPresignedURL: { _ in },
         onRenameFile: { _, _ in },
-        onPreview: { _ in }
+        onPreview: { _ in },
+        isCreatingFolder: .constant(false),
+        onCreateFolder: { _ in },
+        onRefresh: {},
+        onUpload: {}
     )
 }

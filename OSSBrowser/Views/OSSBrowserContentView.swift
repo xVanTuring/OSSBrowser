@@ -30,9 +30,6 @@ struct OSSBrowserContentView: View {
                 selectedBucket: $selectedBucket,
                 isLoading: isLoading
             )
-            .frame(minWidth: 250, maxWidth: 250)
-            
-            .navigationSplitViewColumnWidth(min: 200, ideal: 250,max: 250)
         } detail: {
             // 中间内容区 - 文件列表
             if let bucket = selectedBucket {
@@ -50,7 +47,6 @@ struct OSSBrowserContentView: View {
                     .navigationTitle(bucket.name)
                 }
                 .id(bucket.id)  // 添加 id 以确保在切换 bucket 时重新创建视图
-                .navigationSplitViewColumnWidth(min: 500, ideal: 600)
             } else {
                 ContentUnavailableView(
                     "选择一个 Bucket",
@@ -66,12 +62,19 @@ struct OSSBrowserContentView: View {
                     selectedCount: currentSelectedCount,
                     isLoading: currentIsLoading
                 )
-                .frame(maxWidth: 250)
-                .navigationSplitViewColumnWidth(min: 150, ideal: 200, max: 250)
             } else {
                 Text("选择一个 Bucket 查看详情")
                     .foregroundColor(.secondary)
-                    .frame(maxWidth: 300)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    inspectShow.toggle()
+                } label: {
+                    Label("详情栏", systemImage: "sidebar.right")
+                }
+                .help(inspectShow ? "隐藏详情栏" : "显示详情栏")
             }
         }
         .navigationSplitViewStyle(.prominentDetail)

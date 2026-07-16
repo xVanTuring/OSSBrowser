@@ -51,6 +51,30 @@ class ConfigurationManager: ObservableObject {
         keychainManager.deleteConfiguration(config.id)
     }
 
+    /// 复制一份配置（生成新 ID，名称追加「副本」），返回新配置
+    @discardableResult
+    func duplicateConfiguration(_ config: OSSConfiguration) -> OSSConfiguration {
+        let copy = OSSConfiguration(
+            name: uniqueCopyName(for: config.name),
+            accessKeyId: config.accessKeyId,
+            accessKeySecret: config.accessKeySecret,
+            region: config.region,
+            endpoint: config.endpoint
+        )
+        addConfiguration(copy)
+        return copy
+    }
+
+    /// 生成不与现有名称冲突的「副本」名称
+    private func uniqueCopyName(for name: String) -> String {
+        let base = "\(name) 副本"
+        let existing = Set(configurations.map { $0.name })
+        if !existing.contains(base) { return base }
+        var index = 2
+        while existing.contains("\(base) \(index)") { index += 1 }
+        return "\(base) \(index)"
+    }
+
     private func saveConfiguration(_ config: OSSConfiguration) {
         do {
             try keychainManager.saveConfiguration(config)

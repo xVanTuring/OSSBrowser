@@ -19,13 +19,12 @@ struct OSSFileBrowserContent: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     @ObservedObject private var uploadManager = UploadManager.shared
     @State private var selectedFiles: Set<String> = []
-    @State private var showingCreateFolder = false
-    @State private var folderName = ""
+    @State private var isCreatingFolder = false
     @State private var showingDownloadProgress = false
     @State private var showingUploadProgress = false
     @State private var fileToPreview: OSSFile?
     @State private var previewURL: URL?
-    @State private var useQuickLook: Bool = false
+    @AppStorage(PreviewSettings.useQuickLookKey) private var useQuickLook: Bool = false
     @State private var searchText: String = ""
 
     init(
@@ -63,7 +62,11 @@ struct OSSFileBrowserContent: View {
                 onCopyURL: handleCopyURL,
                 onCopyPresignedURL: handleCopyPresignedURL,
                 onRenameFile: handleRenameFile,
-                onPreview: handleFilePreview
+                onPreview: handleFilePreview,
+                isCreatingFolder: $isCreatingFolder,
+                onCreateFolder: handleCreateFolder,
+                onRefresh: handleRefresh,
+                onUpload: handlePickAndUpload
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -99,16 +102,6 @@ struct OSSFileBrowserContent: View {
         }
         .onChange(of: fileService.isLoading) {
             onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
-        }
-        .alert("创建文件夹", isPresented: $showingCreateFolder) {
-            TextField("文件夹名称", text: $folderName)
-            Button("创建") {
-                createFolder()
-            }
-            .disabled(folderName.isEmpty)
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("请输入文件夹名称")
         }
         .alert("错误", isPresented: .constant(fileService.error != nil)) {
             Button("确定") {
@@ -146,114 +139,61 @@ struct OSSFileBrowserContent: View {
             // 左侧导航按钮
             ToolbarItemGroup(placement: .navigation) {
                 Button(action: {
-                    Task {
-                        try? await fileService.goBack()
-                    }
+                    Task { try? await fileService.goBack() }
                 }) {
-                    Image(systemName: "chevron.left")
+                    Label("返回", systemImage: "chevron.left")
                 }
                 .disabled(!fileService.canGoBack || fileService.isLoading)
                 .help("返回上级目录")
 
                 Button(action: {
-                    Task {
-                        try? await fileService.goForward()
-                    }
+                    Task { try? await fileService.goForward() }
                 }) {
-                    Image(systemName: "chevron.right")
+                    Label("前进", systemImage: "chevron.right")
                 }
                 .disabled(!fileService.canGoForward || fileService.isLoading)
                 .help("前进")
             }
 
             // 右侧操作按钮
-            ToolbarItemGroup(placement: .automatic) {
-                Button(action: {
-                    Task {
-                        try? await fileService.listFiles(at: fileService.currentPath)
-                    }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14))
-                        .controlSize(.mini)
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button(action: handleRefresh) {
+                    Label("刷新", systemImage: "arrow.clockwise")
                 }
                 .disabled(fileService.isLoading)
-                .help("刷新")
+                .keyboardShortcut("r", modifiers: .command)
+                .help("刷新 (⌘R)")
 
-                // 预览模式切换按钮
-                Button(action: {
-                    useQuickLook.toggle()
-                }) {
-                    Image(systemName: useQuickLook ? "eye" : "doc.text.image")
-                        .font(.system(size: 14))
-                        .controlSize(.mini)
-                }
-                .help(useQuickLook ? "当前使用 QuickLook 预览，点击切换到传统预览" : "当前使用传统预览，点击切换到 QuickLook")
-
-                Button(action: { showingCreateFolder = true }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14))
-                        .controlSize(.mini)
+                Button(action: { isCreatingFolder = true }) {
+                    Label("新建文件夹", systemImage: "folder.badge.plus")
                 }
                 .disabled(fileService.isLoading)
-                .help("新建文件夹")
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .help("新建文件夹 (⇧⌘N)")
 
                 // 下载进度按钮
-                Button(action: {
-                    showingDownloadProgress = true
-                }) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 14))
-                        .controlSize(.mini)
-                        .overlay(
-                            // 显示下载数量徽章
-                            Group {
-                                let activeCount = downloadManager.downloadTasks.filter { task in
-                                    task.status == .downloading || task.status == .pending
-                                }.count
-                                if activeCount > 0 {
-                                    Text("\(activeCount)")
-                                        .font(.caption2)
-                                        .foregroundColor(.white)
-                                        .padding(2)
-                                        .background(Color.red)
-                                        .clipShape(Circle())
-                                        .offset(x: 8, y: -8)
-                                }
+                Button(action: { showingDownloadProgress = true }) {
+                    Label {
+                        Text("下载")
+                    } icon: {
+                        Image(systemName: "arrow.down.circle")
+                            .overlay(alignment: .topTrailing) {
+                                if activeDownloadCount > 0 { countBadge(activeDownloadCount) }
                             }
-                        )
+                    }
                 }
                 .help("查看下载进度")
 
                 // 上传进度按钮
-                Button(action: {
-                    showingUploadProgress = true
-                }) {
-                    Image(systemName: "arrow.up.circle")
-                        .font(.system(size: 14))
-                        .controlSize(.mini)
-                        .overlay(
-                            // 显示上传数量徽章
-                            Group {
-                                let activeCount = uploadManager.uploadTasks.filter { task in
-                                    switch task.status {
-                                    case .pending, .uploading:
-                                        return true
-                                    default:
-                                        return false
-                                    }
-                                }.count
-                                if activeCount > 0 {
-                                    Text("\(activeCount)")
-                                        .font(.caption2)
-                                        .foregroundColor(.white)
-                                        .padding(2)
-                                        .background(Color.red)
-                                        .clipShape(Circle())
-                                        .offset(x: 8, y: -8)
-                                }
+                Button(action: { showingUploadProgress = true }) {
+                    Label {
+                        Text("上传")
+                    } icon: {
+                        Image(systemName: "arrow.up.circle")
+                            .overlay(alignment: .topTrailing) {
+                                if activeUploadCount > 0 { countBadge(activeUploadCount) }
                             }
-                        )
+                    }
                 }
                 .help("查看上传进度")
             }
@@ -270,6 +210,34 @@ struct OSSFileBrowserContent: View {
         .quickLookPreview($previewURL)
     }
 
+    // MARK: - Toolbar Helpers
+    private var activeDownloadCount: Int {
+        downloadManager.downloadTasks.filter {
+            $0.status == .downloading || $0.status == .pending
+        }.count
+    }
+
+    private var activeUploadCount: Int {
+        uploadManager.uploadTasks.filter { task in
+            switch task.status {
+            case .pending, .uploading: return true
+            default: return false
+            }
+        }.count
+    }
+
+    @ViewBuilder
+    private func countBadge(_ count: Int) -> some View {
+        Text("\(count)")
+            .font(.caption2)
+            .foregroundColor(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(Color.red)
+            .clipShape(Capsule())
+            .offset(x: 6, y: -6)
+    }
+
     // MARK: - Actions
     private func handleFileSelect(_ file: OSSFile) {
         // 处理文件选择
@@ -282,7 +250,8 @@ struct OSSFileBrowserContent: View {
                 try? await fileService.changeDirectory(file)
             }
         } else {
-            // TODO: 处理文件打开
+            // 双击文件直接预览
+            handleFilePreview(file)
         }
     }
 
@@ -383,33 +352,13 @@ struct OSSFileBrowserContent: View {
 
     @MainActor
     private func generatePresignedURL(for file: OSSFile) async {
-        let ossConfig = Configuration.default()
-            .withCredentialsProvider(
-                StaticCredentialsProvider(
-                    accessKeyId: config.accessKeyId,
-                    accessKeySecret: config.accessKeySecret
-                )
-            )
-            .withRegion(config.region)
-
-        if let endpoint = config.endpoint {
-            ossConfig.withEndpoint(endpoint)
-        }
-
-        let client = Client(ossConfig)
-
         do {
-            let presignResult = try await client.presign(
-                GetObjectRequest(
-                    bucket: bucket.name,
-                    key: file.key
-                ),
-                Date().addingTimeInterval(600)  // 10分钟有效期
-            )
+            let urlString = try await OSSPresigner.presignedURLString(
+                bucket: bucket.name, key: file.key, config: config, expiresIn: 600)  // 10分钟有效期
 
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.setString(presignResult.url, forType: .string)
+            pasteboard.setString(urlString, forType: .string)
 
             // 显示提示
             let alert = NSAlert()
@@ -441,27 +390,10 @@ struct OSSFileBrowserContent: View {
             // 使用 QuickLook 预览
             Task {
                 do {
-                    // 创建 OSS 客户端
-                    let ossConfig = Configuration.default()
-                        .withCredentialsProvider(
-                            StaticCredentialsProvider(
-                                accessKeyId: config.accessKeyId,
-                                accessKeySecret: config.accessKeySecret
-                            )
-                        )
-                        .withRegion(config.region)
-
-                    let client = Client(ossConfig)
-
                     // 生成预签名URL，有效期1小时
-                    let presignResult = try await client.presign(
-                        GetObjectRequest(bucket: bucket.name, key: file.key),
-                        Date().addingTimeInterval(3600)
-                    )
-
-                    // 在主线程更新 UI
+                    let url = try await OSSPresigner.presignedURL(
+                        bucket: bucket.name, key: file.key, config: config)
                     await MainActor.run {
-                        let url = URL(string: presignResult.url)
                         previewURL = url
                     }
                 } catch {
@@ -477,19 +409,44 @@ struct OSSFileBrowserContent: View {
         }
     }
 
-    // MARK: - Create Folder
-    private func createFolder() {
-        guard !folderName.isEmpty else { return }
-        let folderName = folderName
+    // MARK: - Create Folder / Refresh / Upload
+    private func handleCreateFolder(_ name: String) {
+        // 内联行已完成基础校验，这里直接创建
+        isCreatingFolder = false
         Task {
             do {
-                print(folderName)
-                try await fileService.createDirectory(name: folderName)
+                try await fileService.createDirectory(name: name)
             } catch {
                 fileService.error = error
             }
         }
-        self.folderName = ""
+    }
+
+    private func handleRefresh() {
+        Task {
+            try? await fileService.listFiles(at: fileService.currentPath, addToHistory: false)
+        }
+    }
+
+    private func handlePickAndUpload() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "上传"
+        panel.message = "选择要上传到当前目录的文件或文件夹"
+
+        guard panel.runModal() == .OK else { return }
+
+        for url in panel.urls {
+            var isDirectory: ObjCBool = false
+            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            if isDirectory.boolValue {
+                fileService.uploadFolder(url)
+            } else {
+                fileService.uploadFile(url)
+            }
+        }
     }
 }
 

@@ -35,7 +35,7 @@ struct FileTable: View {
             TableColumn("名称", value: \.name) { file in
                 HStack(spacing: 8) {
                     Image(systemName: file.iconName)
-                        .foregroundColor(file.isDirectory ? .blue : .primary)
+                        .foregroundColor(file.category.tint)
                         .frame(width: 16, height: 16)
                     Text(file.name)
                         .font(.body)

@@ -43,8 +43,12 @@ struct GenericFilePreview: View {
                 }
             }
 
-            Text("此文件类型暂不支持预览")
+            Text("\(file.typeLabel) · 暂不支持内联预览")
                 .font(.caption)
+                .foregroundColor(.secondary)
+
+            Text("可在偏好设置（⌘,）切换为 QuickLook 预览，或下载后打开")
+                .font(.caption2)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -37,35 +37,35 @@ struct FilePreviewWindow: View {
 
             Divider()
 
-            // 内容区域
+            // 内容区域：按文件分类路由到对应预览
             Group {
-                if file.isDirectory {
-                    // 文件夹预览
+                switch file.previewKind {
+                case .folder:
                     FolderPreview(file: file)
-                } else if isImageFile(file.name) {
-                    // 图片预览
+                case .image:
                     ImagePreview(file: file, bucketName: bucketName, config: config)
-                } else {
-                    // 其他文件预览
+                case .video:
+                    VideoPreview(file: file, bucketName: bucketName, config: config)
+                case .audio:
+                    AudioPreview(file: file, bucketName: bucketName, config: config)
+                case .pdf:
+                    PDFPreview(file: file, bucketName: bucketName, config: config)
+                case .text:
+                    TextPreview(file: file, bucketName: bucketName, config: config)
+                case .none:
                     GenericFilePreview(file: file)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(NSColor.textBackgroundColor))
         }
-        .frame(width: 600, height: 500)
+        .frame(minWidth: 600, idealWidth: 720, minHeight: 500, idealHeight: 620)
         .focusable()
         .focusEffectDisabled()
         .onKeyPress(.space) {
             dismiss()
             return .handled
         }
-    }
-
-    private func isImageFile(_ fileName: String) -> Bool {
-        let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp", "heic", "heif"]
-        let fileExtension = (fileName as NSString).pathExtension.lowercased()
-        return imageExtensions.contains(fileExtension)
     }
 }
 
