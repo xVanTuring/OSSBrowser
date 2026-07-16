@@ -61,6 +61,7 @@ struct OSSBrowserContentView: View {
                 onSelectFavorite: handleSelectFavorite,
                 onDeleteFavorite: { favoritesManager.removeFavorite($0) }
             )
+            .navigationSplitViewColumnWidth(min: 210, ideal: 250, max: 340)
         } detail: {
             // 中间内容区 - 文件列表
             if let bucket = selectedBucket {

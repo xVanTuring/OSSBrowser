@@ -14,16 +14,19 @@ struct BucketSidebarView: View {
     let onSelectFavorite: (FavoritePath) -> Void
     let onDeleteFavorite: (FavoritePath) -> Void
 
-    private let minTop: CGFloat = 120
-    private let minBottom: CGFloat = 120
-    @State private var topHeight: CGFloat = 260
-    @State private var dragStartHeight: CGFloat?
+    private let minTop: CGFloat = 140
+    private let minBottom: CGFloat = 140
+    /// Bucket 列表占整体高度的比例（拖拽可调），随窗口高度按比例伸缩，避免固定高度被挤
+    @State private var topFraction: CGFloat = 0.55
+    @State private var dragStartFraction: CGFloat?
 
     var body: some View {
         GeometryReader { geo in
-            let total = geo.size.height
-            let maxTop = max(minTop, total - minBottom)
-            let clampedTop = min(max(topHeight, minTop), maxTop)
+            let total = max(geo.size.height, 1)
+            let minFraction = min(minTop / total, 0.9)
+            let maxFraction = max(1 - minBottom / total, minFraction)
+            let clampedFraction = min(max(topFraction, minFraction), maxFraction)
+            let topHeight = total * clampedFraction
 
             VStack(spacing: 0) {
                 BucketListView(
@@ -31,17 +34,18 @@ struct BucketSidebarView: View {
                     selectedBucket: $selectedBucket,
                     isLoading: isLoading
                 )
-                .frame(height: clampedTop)
+                .frame(height: topHeight)
 
                 SidebarSplitHandle()
                     .gesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { value in
-                                if dragStartHeight == nil { dragStartHeight = clampedTop }
-                                let proposed = (dragStartHeight ?? clampedTop) + value.translation.height
-                                topHeight = min(max(proposed, minTop), maxTop)
+                                if dragStartFraction == nil { dragStartFraction = clampedFraction }
+                                let start = dragStartFraction ?? clampedFraction
+                                let proposed = start + value.translation.height / total
+                                topFraction = min(max(proposed, minFraction), maxFraction)
                             }
-                            .onEnded { _ in dragStartHeight = nil }
+                            .onEnded { _ in dragStartFraction = nil }
                     )
 
                 FavoritesListView(

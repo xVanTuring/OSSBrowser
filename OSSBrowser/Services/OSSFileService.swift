@@ -17,7 +17,8 @@ class OSSFileService: ObservableObject {
 
     @Published var currentPath: String = ""
     @Published var files: [OSSFile] = []
-    @Published var isLoading: Bool = false
+    // 初始即视为「加载中」，避免视图首帧（onAppear 触发 listFiles 之前）闪现「空文件夹」
+    @Published var isLoading: Bool = true
     @Published var isLoadingMore: Bool = false
     @Published var hasMore: Bool = false
     @Published var currentSearchQuery: String = ""
