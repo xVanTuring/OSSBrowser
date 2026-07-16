@@ -7,6 +7,7 @@
 
 import Foundation
 import AlibabaCloudOSS
+import UserNotifications
 import Combine
 
 @MainActor
@@ -25,7 +26,9 @@ class UploadManager: ObservableObject {
     private var taskHandles: [UUID: Task<Void, Never>] = [:]
     private let maxConcurrentTasks = 5
 
-    private init() {}
+    private init() {
+        requestNotificationPermission()
+    }
 
     func configure(with config: OSSConfiguration, bucketName: String) {
         self.config = config
@@ -119,7 +122,7 @@ class UploadManager: ObservableObject {
 
     func clearCompletedTasks() {
         uploadTasks.removeAll { task in
-            task.status == .completed || task.status == .cancelled
+            task.status == .completed || task.status == .cancelled || task.status == .failed
         }
     }
 
@@ -200,6 +203,7 @@ class UploadManager: ObservableObject {
             task.uploadedBytes = task.fileSize
             task.completedParts = task.totalParts
             onUploadComplete?()
+            sendNotification(title: "上传完成", body: "\(task.fileName) 上传完成")
         case .cancelled:
             if task.status != .cancelled {
                 task.status = .cancelled
@@ -207,11 +211,26 @@ class UploadManager: ObservableObject {
         case .failed(let error):
             task.error = error
             task.status = .failed
-            print("Upload failed: \(task.fileName), error: \(error.localizedDescription)")
+            sendNotification(title: "上传失败", body: "\(task.fileName) 上传失败: \(error.localizedDescription)")
         }
 
         activeUploads.remove(task.id)
         processQueue(bucket: bucket)
+    }
+
+    // MARK: - Notifications
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+
+    private func sendNotification(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
     }
 }
 

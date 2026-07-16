@@ -124,6 +124,27 @@ class DownloadManager: ObservableObject {
         }
     }
 
+    /// 移除单个任务；若正在下载则先取消
+    func removeTask(_ task: DownloadTask) {
+        if activeDownloads.contains(task.id) {
+            cancelDownload(task.id)
+        }
+        downloadTasks.removeAll { $0.id == task.id }
+    }
+
+    /// 重试失败的下载任务
+    func retryFailedTask(_ task: DownloadTask) {
+        guard task.status == .failed else { return }
+        task.status = .pending
+        task.error = nil
+        task.downloadedBytes = 0
+        task.progress = 0.0
+        task.completedParts = 0
+        task.startTime = nil
+        task.endTime = nil
+        processQueue()
+    }
+
     // MARK: - Queue
 
     private func processQueue() {
