@@ -432,7 +432,7 @@ nonisolated struct DownloadRunner {
         let totalSizeForProgress = totalSize
         let progressTicker = TransferProgressTicker(counter: counter) { [task] current in
             await MainActor.run {
-                task.downloadedBytes = current
+                task.recordProgress(current)
                 if totalSizeForProgress > 0 {
                     task.progress = min(1.0, Double(current) / Double(totalSizeForProgress))
                 }

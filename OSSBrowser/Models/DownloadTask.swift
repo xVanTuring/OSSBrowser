@@ -36,6 +36,11 @@ class DownloadTask: ObservableObject, Identifiable {
     @Published var completedParts: Int = 0
     @Published var totalParts: Int = 1
 
+    /// 瞬时速度（字节/秒），由 recordProgress 基于相邻采样计算
+    @Published var currentSpeed: Double = 0
+    private var speedLastBytes: Int64 = 0
+    private var speedLastTime: Date?
+
     init(fileName: String, key: String, bucketName: String, totalSize: Int64, localURL: URL) {
         self.fileName = fileName
         self.key = key
@@ -48,31 +53,37 @@ class DownloadTask: ObservableObject, Identifiable {
         return Int(progress * 100)
     }
 
+    /// 记录一次进度采样，更新累计字节与瞬时速度（带指数平滑）
+    func recordProgress(_ bytes: Int64) {
+        let now = Date()
+        if let last = speedLastTime {
+            let dt = now.timeIntervalSince(last)
+            if dt >= 0.15 {
+                let delta = Double(max(0, bytes - speedLastBytes))
+                let inst = delta / dt
+                currentSpeed = currentSpeed == 0 ? inst : currentSpeed * 0.5 + inst * 0.5
+                speedLastBytes = bytes
+                speedLastTime = now
+            }
+        } else {
+            speedLastTime = now
+            speedLastBytes = bytes
+        }
+        downloadedBytes = bytes
+    }
+
     var downloadSpeed: String {
-        guard let startTime = startTime else { return "0 B/s" }
-
-        let elapsedTime = Date().timeIntervalSince(startTime)
-        guard elapsedTime > 0 else { return "0 B/s" }
-
-        let speed = Double(downloadedBytes) / elapsedTime
-        return ByteCountFormatter.string(fromByteCount: Int64(speed), countStyle: .file) + "/s"
+        guard currentSpeed > 0 else { return "0 B/s" }
+        return ByteCountFormatter.string(fromByteCount: Int64(currentSpeed), countStyle: .file) + "/s"
     }
 
     var remainingTime: String? {
-        guard let startTime = startTime, downloadedBytes > 0, totalSize > 0 else { return nil }
-
-        let elapsedTime = Date().timeIntervalSince(startTime)
-        let speed = Double(downloadedBytes) / elapsedTime
-
-        if speed == 0 { return nil }
-
-        let remainingBytes = totalSize - downloadedBytes
-        let remainingSeconds = Double(remainingBytes) / speed
-
+        guard currentSpeed > 0, totalSize > 0, downloadedBytes < totalSize else { return nil }
+        let remainingBytes = Double(totalSize - downloadedBytes)
+        let remainingSeconds = remainingBytes / currentSpeed
         let formatter = DateComponentsFormatter()
         formatter.allowedUnits = [.hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
-
         return formatter.string(from: TimeInterval(remainingSeconds))
     }
 }

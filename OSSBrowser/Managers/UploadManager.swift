@@ -440,7 +440,7 @@ nonisolated struct UploadRunner {
     ) -> TransferProgressTicker {
         TransferProgressTicker(counter: counter) { [task] current in
             await MainActor.run {
-                task.uploadedBytes = current
+                task.recordProgress(current)
                 if totalSize > 0 {
                     task.progress = min(1.0, Double(current) / Double(totalSize))
                 }
