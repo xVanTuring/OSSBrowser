@@ -18,3 +18,6 @@ dist/
 # Machine-specific LSP config — regenerate with:
 #   xcode-build-server config -project OSSBrowser.xcodeproj -scheme OSSBrowser
 buildServer.json
+
+# Claude Code — per-user local permissions, not shared
+.claude/settings.local.json
