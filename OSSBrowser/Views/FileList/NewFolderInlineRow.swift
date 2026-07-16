@@ -61,6 +61,7 @@ struct NewFolderInlineRow: View {
                     .controlSize(.small)
                 Button("创建") { commit() }
                     .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canCommit)
             }
             .padding(.horizontal, 12)

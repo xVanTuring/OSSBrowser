@@ -33,6 +33,14 @@ struct FileListView: View {
     let onCreateFolder: (String) -> Void
     let onRefresh: () -> Void
     let onUpload: () -> Void
+    /// 当前搜索前缀（为空表示非搜索状态），用于区分「空文件夹」与「搜索无结果」
+    var searchQuery: String = ""
+    /// 列表加载失败信息（非 nil 且列表为空时显示错误态）
+    var loadErrorMessage: String? = nil
+    /// 错误态「重试」
+    var onRetry: () -> Void = {}
+    /// 搜索无结果时「清除搜索」
+    var onClearSearch: () -> Void = {}
 
     @State private var showingDeleteAlert = false
     @State private var filesToDelete: [OSSFile] = []
@@ -69,7 +77,8 @@ struct FileListView: View {
             files: files,
             selectedFiles: $selectedFiles,
             onBatchDelete: handleBatchDelete,
-            onPreview: onPreview
+            onPreview: onPreview,
+            onOpen: onFileDoubleClick
         )
     }
 
@@ -112,11 +121,22 @@ struct FileListView: View {
                 )
             }
 
+            // 刷新已有内容时的顶部加载指示（列表非空时）
+            if isLoading && !files.isEmpty {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .frame(height: 2)
+            }
+
             // 文件列表
             if isLoading && files.isEmpty {
                 FileListStates.LoadingView()
+            } else if let loadErrorMessage, files.isEmpty {
+                FileListStates.ErrorView(message: loadErrorMessage, onRetry: onRetry)
+            } else if files.isEmpty && !searchQuery.isEmpty {
+                FileListStates.SearchEmptyView(query: searchQuery, onClear: onClearSearch)
             } else if files.isEmpty {
-                FileListStates.EmptyFolderView()
+                FileListStates.EmptyFolderView(onUpload: onUpload)
                     .onDrop(of: [.fileURL], isTargeted: $emptyFolderDropActive) { providers in
                         dropHandler.handleDrop(providers: providers)
                     }
@@ -144,6 +164,8 @@ struct FileListView: View {
                         onCopyPath: onCopyPath,
                         onCopyURL: onCopyURL,
                         onCopyPresignedURL: onCopyPresignedURL,
+                        onPreview: onPreview,
+                        onOpen: onFileDoubleClick,
                         onRename: { file in
                             fileToRename = file
                             newFileName = file.name

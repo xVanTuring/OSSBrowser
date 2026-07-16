@@ -9,6 +9,13 @@ import AlibabaCloudOSS
 import SwiftUI
 import QuickLook
 
+/// 上传前检测到同名项时的覆盖确认信息
+private struct UploadConflict: Identifiable {
+    let id = UUID()
+    let urls: [URL]
+    let conflictNames: [String]
+}
+
 // 文件浏览器内容 - 不包含工具栏
 struct OSSFileBrowserContent: View {
     let bucket: BucketItem
@@ -33,6 +40,8 @@ struct OSSFileBrowserContent: View {
     @State private var previewURL: URL?
     @AppStorage(PreviewSettings.useQuickLookKey) private var useQuickLook: Bool = false
     @State private var searchText: String = ""
+    @State private var toastText: String?
+    @State private var uploadConflict: UploadConflict?
 
     init(
         bucket: BucketItem, config: OSSConfiguration,
@@ -79,7 +88,11 @@ struct OSSFileBrowserContent: View {
                 isCreatingFolder: $isCreatingFolder,
                 onCreateFolder: handleCreateFolder,
                 onRefresh: handleRefresh,
-                onUpload: handlePickAndUpload
+                onUpload: handlePickAndUpload,
+                searchQuery: fileService.currentSearchQuery,
+                loadErrorMessage: fileService.loadError?.localizedDescription,
+                onRetry: handleRetry,
+                onClearSearch: { searchText = "" }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -237,12 +250,44 @@ struct OSSFileBrowserContent: View {
         .sheet(item: $fileToPreview) { file in
             FilePreviewWindow(
                 file: file,
+                files: fileService.files.filter { !$0.isDirectory },
                 bucketName: bucket.name,
                 config: config
             )
         }
         // QuickLook 预览 (用于 QuickLook 模式)
         .quickLookPreview($previewURL)
+        // 上传覆盖确认
+        .confirmationDialog(
+            "覆盖确认",
+            isPresented: Binding(
+                get: { uploadConflict != nil },
+                set: { if !$0 { uploadConflict = nil } }
+            ),
+            presenting: uploadConflict
+        ) { conflict in
+            Button("覆盖上传", role: .destructive) {
+                doUpload(conflict.urls)
+            }
+            Button("取消", role: .cancel) {}
+        } message: { conflict in
+            Text("当前目录已存在以下 \(conflict.conflictNames.count) 个同名项目，继续将覆盖：\n\n" + conflict.conflictNames.joined(separator: "\n"))
+        }
+        // 轻量操作反馈 toast
+        .overlay(alignment: .bottom) {
+            if let toastText {
+                Text(toastText)
+                    .font(.callout)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.2)))
+                    .shadow(radius: 10, y: 2)
+                    .padding(.bottom, 56)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.3), value: toastText)
     }
 
     // MARK: - Toolbar Helpers
@@ -333,11 +378,11 @@ struct OSSFileBrowserContent: View {
     }
 
     private func handleDropFile(_ url: URL) {
-        fileService.uploadFile(url)
+        performUpload(urls: [url])
     }
 
     private func handleDropFolder(_ url: URL) {
-        fileService.uploadFolder(url)
+        performUpload(urls: [url])
     }
 
     private func handleDownloadMultiple(_ files: [OSSFile]) {
@@ -361,6 +406,7 @@ struct OSSFileBrowserContent: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(file.key, forType: .string)
+        showToast("已复制路径")
     }
 
     private func handleCopyURL(_ file: OSSFile) {
@@ -377,6 +423,7 @@ struct OSSFileBrowserContent: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(url, forType: .string)
+        showToast("已复制文件地址")
     }
 
     private func handleCopyPresignedURL(_ file: OSSFile) {
@@ -395,18 +442,9 @@ struct OSSFileBrowserContent: View {
             pasteboard.clearContents()
             pasteboard.setString(urlString, forType: .string)
 
-            // 显示提示
-            let alert = NSAlert()
-            alert.messageText = "预签名地址已复制"
-            alert.informativeText = "有效期：10分钟"
-            alert.alertStyle = .informational
-            alert.runModal()
+            showToast("已复制预签名地址（有效期 10 分钟）")
         } catch {
-            let alert = NSAlert()
-            alert.messageText = "生成预签名地址失败"
-            alert.informativeText = error.localizedDescription
-            alert.alertStyle = .critical
-            alert.runModal()
+            fileService.error = error
         }
     }
 
@@ -472,14 +510,52 @@ struct OSSFileBrowserContent: View {
         panel.message = "选择要上传到当前目录的文件或文件夹"
 
         guard panel.runModal() == .OK else { return }
+        performUpload(urls: panel.urls)
+    }
 
-        for url in panel.urls {
+    // MARK: - Upload with overwrite check
+
+    private func performUpload(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        let existingNames = Set(fileService.files.map { $0.name })
+        let conflictNames = urls.map { $0.lastPathComponent }.filter { existingNames.contains($0) }
+        if conflictNames.isEmpty {
+            doUpload(urls)
+        } else {
+            uploadConflict = UploadConflict(urls: urls, conflictNames: conflictNames)
+        }
+    }
+
+    private func doUpload(_ urls: [URL]) {
+        for url in urls {
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
             if isDirectory.boolValue {
                 fileService.uploadFolder(url)
             } else {
                 fileService.uploadFile(url)
+            }
+        }
+    }
+
+    // MARK: - Toast / Retry
+
+    private func showToast(_ text: String) {
+        toastText = text
+        Task {
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            await MainActor.run {
+                if toastText == text { toastText = nil }
+            }
+        }
+    }
+
+    private func handleRetry() {
+        Task {
+            if fileService.currentSearchQuery.isEmpty {
+                try? await fileService.listFiles(at: fileService.currentPath, addToHistory: false)
+            } else {
+                try? await fileService.search(fileService.currentSearchQuery)
             }
         }
     }

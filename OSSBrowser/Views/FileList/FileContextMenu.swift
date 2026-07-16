@@ -15,6 +15,8 @@ struct FileContextMenu: View {
     let onCopyPath: (OSSFile) -> Void
     let onCopyURL: (OSSFile) -> Void
     let onCopyPresignedURL: (OSSFile) -> Void
+    let onPreview: (OSSFile) -> Void
+    let onOpen: (OSSFile) -> Void
     let onRename: (OSSFile) -> Void
     let onDelete: (OSSFile) -> Void
     let onBatchDelete: () -> Void
@@ -41,6 +43,22 @@ struct FileContextMenu: View {
             }
         } else if let file = files.first(where: { selectedFiles.contains($0.id) }) {
             // 单选菜单
+            if file.isDirectory {
+                Button(action: {
+                    onOpen(file)
+                }) {
+                    Label("打开", systemImage: "folder")
+                }
+            } else {
+                Button(action: {
+                    onPreview(file)
+                }) {
+                    Label("预览", systemImage: "eye")
+                }
+            }
+
+            Divider()
+
             if file.isDirectory {
                 Button(action: {
                     onDownloadFolder(file)

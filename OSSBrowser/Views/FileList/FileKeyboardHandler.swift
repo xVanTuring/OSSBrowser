@@ -12,6 +12,7 @@ struct FileKeyboardHandler {
     @Binding var selectedFiles: Set<String>
     let onBatchDelete: () -> Void
     let onPreview: (OSSFile) -> Void
+    let onOpen: (OSSFile) -> Void
 
     func handleKeyPress(_ key: KeyPress) -> KeyPress.Result {
         // Command+A 全选
@@ -37,10 +38,15 @@ struct FileKeyboardHandler {
             }
         }
 
-//        if key.key == .return {
-//            print("clicked enter")
-//            return .handled
-//        }
+        // 回车：打开选中项（文件夹进入 / 文件预览）
+        if key.key == .return {
+            if selectedFiles.count == 1,
+               let fileId = selectedFiles.first,
+               let file = files.first(where: { $0.id == fileId }) {
+                onOpen(file)
+                return .handled
+            }
+        }
 
         // 方向键导航 - Table 已经内置支持
         return .ignored

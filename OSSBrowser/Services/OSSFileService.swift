@@ -22,6 +22,8 @@ class OSSFileService: ObservableObject {
     @Published var hasMore: Bool = false
     @Published var currentSearchQuery: String = ""
     @Published var error: Error?
+    /// 列表加载失败（区别于删除/重命名等操作错误），用于在列表区显示错误态
+    @Published var loadError: Error?
 
     private var nextContinuationToken: String? = nil
     private let pageSize: Int = 200
@@ -124,12 +126,18 @@ class OSSFileService: ObservableObject {
         currentSearchQuery = ""
         isLoading = true
         error = nil
+        loadError = nil
         nextContinuationToken = nil
         hasMore = false
 
         defer { isLoading = false }
 
-        try await fetchFiles(dirPrefix: buildPrefix(for: path), searchQuery: "")
+        do {
+            try await fetchFiles(dirPrefix: buildPrefix(for: path), searchQuery: "")
+        } catch {
+            loadError = error
+            throw error
+        }
     }
 
     func search(_ query: String) async throws {
@@ -138,12 +146,18 @@ class OSSFileService: ObservableObject {
         currentSearchQuery = query
         isLoading = true
         error = nil
+        loadError = nil
         nextContinuationToken = nil
         hasMore = false
 
         defer { isLoading = false }
 
-        try await fetchFiles(dirPrefix: buildPrefix(for: currentPath), searchQuery: query)
+        do {
+            try await fetchFiles(dirPrefix: buildPrefix(for: currentPath), searchQuery: query)
+        } catch {
+            loadError = error
+            throw error
+        }
     }
 
     private func fetchFiles(dirPrefix: String, searchQuery: String) async throws {

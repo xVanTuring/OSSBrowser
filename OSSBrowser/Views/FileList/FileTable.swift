@@ -67,16 +67,16 @@ struct FileTable: View {
         }
         .onChange(of: sortOrder) { _, newOrder in
             withAnimation(.easeInOut(duration: 0.2)) {
-                sortedFiles = files.sorted(using: newOrder)
+                sortedFiles = sortedFoldersFirst(files, using: newOrder)
             }
         }
         .onChange(of: files) { _, newFiles in
             withAnimation(.easeInOut(duration: 0.2)) {
-                sortedFiles = newFiles.sorted(using: sortOrder)
+                sortedFiles = sortedFoldersFirst(newFiles, using: sortOrder)
             }
         }
         .onAppear {
-            sortedFiles = files.sorted(using: sortOrder)
+            sortedFiles = sortedFoldersFirst(files, using: sortOrder)
         }
         .tableStyle(.inset)
         .alternatingRowBackgrounds()
@@ -87,6 +87,23 @@ struct FileTable: View {
         .background(dropAreaActive ? Color.accentColor.opacity(0.1) : Color.clear)
         .onKeyPress { key in
             keyboardHandler.handleKeyPress(key)
+        }
+    }
+
+    /// 排序：始终把文件夹分组置顶，组内再按当前列排序规则
+    private func sortedFoldersFirst(
+        _ list: [OSSFile],
+        using order: [KeyPathComparator<OSSFile>]
+    ) -> [OSSFile] {
+        list.sorted { lhs, rhs in
+            if lhs.isDirectory != rhs.isDirectory { return lhs.isDirectory }
+            for comparator in order {
+                let result = comparator.compare(lhs, rhs)
+                if result != .orderedSame {
+                    return result == .orderedAscending
+                }
+            }
+            return false
         }
     }
 }
