@@ -47,6 +47,13 @@ struct ConfigurationListView: View {
                     .help("打开 OSS 浏览器")
                 }
                 .padding(.vertical, 2)
+                .contentShape(Rectangle())
+                // 双击配置行直接打开浏览器窗口（单击仍用于选中）
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        openBrowser(for: config)
+                    }
+                )
                 .contextMenu {
                     Button {
                         openBrowser(for: config)
@@ -70,6 +77,23 @@ struct ConfigurationListView: View {
             }
             .navigationTitle("OSS 配置")
             .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+            // 首次启动引导：无任何配置时叠加空状态与「新建配置」入口
+            .overlay {
+                if configManager.configurations.isEmpty {
+                    ContentUnavailableView {
+                        Label("还没有配置", systemImage: "externaldrive.badge.plus")
+                    } description: {
+                        Text("创建一个 OSS 配置，即可开始浏览你的 Bucket。")
+                    } actions: {
+                        Button {
+                            addNewConfiguration()
+                        } label: {
+                            Label("新建配置", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button(action: { addNewConfiguration() }) {
@@ -127,22 +151,27 @@ struct ConfigurationListView: View {
                     }
                 )
                 .id(selectedConfig?.id)  // 添加 id 以确保在切换配置时重新创建视图
-            } else {
-                // 空状态
-                VStack(spacing: 20) {
-                    Image(systemName: "server.rack")
-                        .font(.system(size: 60))
-                        .foregroundColor(.secondary)
-
-                    Text("选择一个配置进行编辑")
-                        .font(.title2)
-                        .foregroundColor(.secondary)
-
-                    Text("或点击右上角的 + 按钮创建新配置")
-                        .font(.body)
-                        .foregroundColor(.secondary)
+            } else if configManager.configurations.isEmpty {
+                // 空状态一：还没有任何配置
+                ContentUnavailableView {
+                    Label("还没有配置", systemImage: "externaldrive.badge.plus")
+                } description: {
+                    Text("点击创建你的第一个 OSS 配置。")
+                } actions: {
+                    Button {
+                        addNewConfiguration()
+                    } label: {
+                        Label("新建配置", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // 空状态二：已有配置但未选中
+                ContentUnavailableView(
+                    "未选中配置",
+                    systemImage: "server.rack",
+                    description: Text("从左侧选择一个配置进行编辑，或点击右上角的 + 新建配置。")
+                )
             }
         }
         .alert("删除配置", isPresented: $showingDeleteAlert) {

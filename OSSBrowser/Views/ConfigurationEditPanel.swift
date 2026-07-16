@@ -22,6 +22,12 @@ struct ConfigurationEditPanel: View {
     @State private var showingTestAlert = false
     @State private var testResult: String = ""
     @State private var hasChanges = false
+    @State private var isTesting = false          // 测试连接进行中
+    @State private var isSecretVisible = false     // 是否明文显示 AccessKeySecret
+    @State private var showSaveSuccess = false     // 保存成功的短暂反馈
+
+    // 新建时让初始焦点落到「配置名称」字段
+    @FocusState private var isNameFocused: Bool
 
     init(config: OSSConfiguration, isCreatingNew: Bool, onSave: @escaping (OSSConfiguration) -> Void, onCancel: @escaping () -> Void) {
         self.config = config
@@ -60,13 +66,18 @@ struct ConfigurationEditPanel: View {
                 // 测试连接按钮
                 Button(action: testConnection) {
                     HStack(spacing: 6) {
-                        Image(systemName: "network")
-                            .font(.system(size: 14))
-                        Text("测试连接")
+                        if isTesting {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "network")
+                                .font(.system(size: 14))
+                        }
+                        Text(isTesting ? "测试中…" : "测试连接")
                             .font(.system(size: 14))
                     }
                 }
-                .disabled(accessKeyId.isEmpty || accessKeySecret.isEmpty)
+                .disabled(accessKeyId.isEmpty || accessKeySecret.isEmpty || isTesting)
                 .buttonStyle(.bordered)
             }
             .padding(.horizontal, 24)
@@ -82,9 +93,13 @@ struct ConfigurationEditPanel: View {
                         Text("基本信息")
                             .font(.headline)
 
-                        TextField("配置名称", text: $name)
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: name) { markHasChanged() }
+                        VStack(alignment: .leading, spacing: 4) {
+                            requiredFieldLabel("配置名称")
+                            TextField("例如：我的生产环境", text: $name)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($isNameFocused)
+                                .onChange(of: name) { markHasChanged() }
+                        }
                     }
 
                     // 凭证信息
@@ -92,14 +107,37 @@ struct ConfigurationEditPanel: View {
                         Text("凭证信息")
                             .font(.headline)
 
-                        VStack(spacing: 12) {
-                            TextField("Access Key ID", text: $accessKeyId)
-                                .textFieldStyle(.roundedBorder)
-                                .onChange(of: accessKeyId) { markHasChanged() }
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                requiredFieldLabel("Access Key ID")
+                                TextField("Access Key ID", text: $accessKeyId)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onChange(of: accessKeyId) { markHasChanged() }
+                            }
 
-                            SecureField("Access Key Secret", text: $accessKeySecret)
-                                .textFieldStyle(.roundedBorder)
-                                .onChange(of: accessKeySecret) { markHasChanged() }
+                            VStack(alignment: .leading, spacing: 4) {
+                                requiredFieldLabel("Access Key Secret")
+                                HStack(spacing: 8) {
+                                    // 眼睛按钮切换明文/密文显示
+                                    Group {
+                                        if isSecretVisible {
+                                            TextField("Access Key Secret", text: $accessKeySecret)
+                                        } else {
+                                            SecureField("Access Key Secret", text: $accessKeySecret)
+                                        }
+                                    }
+                                    .textFieldStyle(.roundedBorder)
+                                    .onChange(of: accessKeySecret) { markHasChanged() }
+
+                                    Button {
+                                        isSecretVisible.toggle()
+                                    } label: {
+                                        Image(systemName: isSecretVisible ? "eye.slash" : "eye")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help(isSecretVisible ? "隐藏" : "显示")
+                                }
+                            }
                         }
                     }
 
@@ -108,33 +146,16 @@ struct ConfigurationEditPanel: View {
                         Text("区域设置")
                             .font(.headline)
 
-                        Picker("Region", selection: $region) {
-                            Text("华东1（杭州）").tag("cn-hangzhou")
-                            Text("华东2（上海）").tag("cn-shanghai")
-                            Text("华北1（青岛）").tag("cn-qingdao")
-                            Text("华北2（北京）").tag("cn-beijing")
-                            Text("华北3（张家口）").tag("cn-zhangjiakou")
-                            Text("华北5（呼和浩特）").tag("cn-huhehaote")
-                            Text("华南1（深圳）").tag("cn-shenzhen")
-                            Text("西南1（成都）").tag("cn-chengdu")
-                            Text("中国香港").tag("cn-hongkong")
-                            Text("美国西部1（硅谷）").tag("us-west-1")
-                            Text("美国东部1（弗吉尼亚）").tag("us-east-1")
-                            Text("新加坡").tag("ap-southeast-1")
-                            Text("日本（东京）").tag("ap-northeast-1")
-                            Text("德国（法兰克福）").tag("eu-central-1")
-                            Text("英国（伦敦）").tag("eu-west-1")
-                            Text("澳大利亚（悉尼）").tag("ap-southeast-2")
-                        }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .onChange(of: region) { markHasChanged() }
+                        OSSRegionPicker(title: "Region", selection: $region)
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onChange(of: region) { markHasChanged() }
 
                         Toggle("使用自定义 Endpoint", isOn: $useCustomEndpoint)
                             .onChange(of: useCustomEndpoint) { markHasChanged() }
 
                         if useCustomEndpoint {
-                            TextField("Endpoint", text: $endpoint)
+                            TextField("https://oss-cn-hangzhou.aliyuncs.com", text: $endpoint)
                                 .textFieldStyle(.roundedBorder)
                                 .onChange(of: endpoint) { markHasChanged() }
                         }
@@ -147,34 +168,88 @@ struct ConfigurationEditPanel: View {
             Divider()
 
             // 底部按钮
-            HStack {
-                Button("取消") {
-                    onCancel()
-                }
-                .keyboardShortcut(.escape)
-
-                if !isCreatingNew && hasChanges {
+            HStack(spacing: 12) {
+                // 新建模式：保留「取消」（Esc）；
+                // 编辑模式：隐藏「取消」，仅在有更改时出现「重置」（Esc 等同重置），避免无意义的空操作。
+                if isCreatingNew {
+                    Button("取消") {
+                        onCancel()
+                    }
+                    .keyboardShortcut(.escape)
+                } else if hasChanges {
                     Button("重置") {
                         resetToOriginal()
                     }
+                    .keyboardShortcut(.escape)
+                }
+
+                // 必填缺失时提示原因，解释「保存」为何禁用
+                if let missing = missingRequiredFieldsMessage {
+                    Label(missing, systemImage: "exclamationmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
 
                 Spacer()
+
+                // 保存成功的短暂反馈
+                if showSaveSuccess {
+                    Label("已保存", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.green)
+                        .transition(.opacity)
+                }
 
                 Button("保存") {
                     saveConfiguration()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(name.isEmpty || accessKeyId.isEmpty || accessKeySecret.isEmpty || (!hasChanges && !isCreatingNew))
+                .disabled(!canSave)
                 .keyboardShortcut(.return, modifiers: [.command])
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
         }
+        .onAppear {
+            // 新建时把初始焦点放到「配置名称」
+            if isCreatingNew {
+                DispatchQueue.main.async {
+                    isNameFocused = true
+                }
+            }
+        }
         .alert("测试结果", isPresented: $showingTestAlert) {
             Button("确定") { }
         } message: {
             Text(testResult)
+        }
+    }
+
+    /// 必填字段是否齐全，且（编辑态）确有改动
+    private var canSave: Bool {
+        !name.isEmpty && !accessKeyId.isEmpty && !accessKeySecret.isEmpty
+            && (hasChanges || isCreatingNew)
+    }
+
+    /// 缺失的必填字段提示；无缺失返回 nil
+    private var missingRequiredFieldsMessage: String? {
+        var fields: [String] = []
+        if name.isEmpty { fields.append("配置名称") }
+        if accessKeyId.isEmpty { fields.append("Access Key ID") }
+        if accessKeySecret.isEmpty { fields.append("Access Key Secret") }
+        guard !fields.isEmpty else { return nil }
+        return "请填写：" + fields.joined(separator: "、")
+    }
+
+    /// 必填字段标签：名称后附红色 * 号
+    private func requiredFieldLabel(_ text: String) -> some View {
+        HStack(spacing: 2) {
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text("*")
+                .font(.subheadline)
+                .foregroundStyle(.red)
         }
     }
 
@@ -207,19 +282,23 @@ struct ConfigurationEditPanel: View {
             endpoint: endpoint
         )
 
+        isTesting = true
         Task {
             do {
                 let ossService = OSSService()
                 try await ossService.connect(with: testConfig)
+                let buckets = try await ossService.listBuckets()
 
                 await MainActor.run {
-                    testResult = "✅ 连接成功！"
+                    testResult = "✅ 连接成功！可访问 \(buckets.count) 个 Bucket。"
                     showingTestAlert = true
+                    isTesting = false
                 }
             } catch {
                 await MainActor.run {
-                    testResult = "❌ 连接失败：\(error.localizedDescription)"
+                    testResult = "❌ 连接失败：\(OSSFriendlyError.message(for: error))"
                     showingTestAlert = true
+                    isTesting = false
                 }
             }
         }
@@ -250,6 +329,16 @@ struct ConfigurationEditPanel: View {
         }
 
         onSave(newConfig)
+
+        // 保存成功闭环：复位 hasChanges（置灰保存按钮）并给出短暂成功反馈
+        hasChanges = false
+        withAnimation { showSaveSuccess = true }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            await MainActor.run {
+                withAnimation { showSaveSuccess = false }
+            }
+        }
     }
 }
 

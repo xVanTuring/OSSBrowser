@@ -25,6 +25,8 @@ struct OSSBrowserApp: App {
         WindowGroup(for: OSSConfiguration.self) { $config in
             if let config = config {
                 OSSBrowserContentView(config: config, ossService: OSSService())
+                    // 窗口标题设为配置名，便于多窗口区分
+                    .navigationTitle(config.name)
             } else {
                 Text("请从配置管理窗口打开 OSS 浏览器")
                     .foregroundColor(.secondary)

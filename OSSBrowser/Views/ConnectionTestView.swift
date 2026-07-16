@@ -42,8 +42,10 @@ struct ConnectionTestView: View {
                 VStack(alignment: .leading) {
                     Text("Region")
                         .font(.headline)
-                    TextField("例如: cn-hangzhou", text: $region)
-                        .textFieldStyle(.roundedBorder)
+                    // 与配置编辑面板保持一致：改为下拉选择
+                    OSSRegionPicker(title: "", selection: $region)
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(maxWidth: 400)
@@ -129,7 +131,7 @@ struct ConnectionTestView: View {
             } catch {
                 await MainActor.run {
                     isLoading = false
-                    errorMessage = error.localizedDescription
+                    errorMessage = OSSFriendlyError.message(for: error)
                     showingError = true
 
                     // 在控制台打印详细错误
