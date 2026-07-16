@@ -121,13 +121,6 @@ struct FileListView: View {
                 )
             }
 
-            // 刷新已有内容时的顶部加载指示（列表非空时）
-            if isLoading && !files.isEmpty {
-                ProgressView()
-                    .progressViewStyle(.linear)
-                    .frame(height: 2)
-            }
-
             // 文件列表
             if isLoading && files.isEmpty {
                 FileListStates.LoadingView()
@@ -203,6 +196,15 @@ struct FileListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 刷新已有内容时的加载指示：浮在列表顶部，不占布局、不推动列表
+        .overlay(alignment: .top) {
+            if isLoading && !files.isEmpty {
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isLoading)
         .alert("确认删除", isPresented: $showingDeleteAlert) {
             Button("取消", role: .cancel) {}
             Button("删除", role: .destructive) {

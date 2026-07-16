@@ -48,12 +48,6 @@ struct ConfigurationListView: View {
                 }
                 .padding(.vertical, 2)
                 .contentShape(Rectangle())
-                // 双击配置行直接打开浏览器窗口（单击仍用于选中）
-                .simultaneousGesture(
-                    TapGesture(count: 2).onEnded {
-                        openBrowser(for: config)
-                    }
-                )
                 .contextMenu {
                     Button {
                         openBrowser(for: config)
