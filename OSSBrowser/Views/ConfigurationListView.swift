@@ -20,39 +20,15 @@ struct ConfigurationListView: View {
         NavigationSplitView {
             // 左侧配置列表
             List(configManager.configurations, id: \.id, selection: $selectedConfig) { config in
-                HStack(spacing: 12) {
-                    Image(systemName: "externaldrive.fill")
-                        .font(.title3)
-                        .foregroundStyle(.tint)
-                        .frame(width: 26)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(config.name)
-                            .font(.headline)
-                            .lineLimit(1)
-                        Text(config.region)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer(minLength: 8)
-
+                ConfigurationRow(config: config, isSelected: selectedConfig?.id == config.id)
+                    .tag(config)
+            }
+            .contextMenu(forSelectionType: OSSConfiguration.self) { items in
+                if let config = items.first {
                     Button {
                         openBrowser(for: config)
                     } label: {
-                        Image(systemName: "arrow.up.forward")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("打开 OSS 浏览器")
-                }
-                .padding(.vertical, 2)
-                .contentShape(Rectangle())
-                .contextMenu {
-                    Button {
-                        openBrowser(for: config)
-                    } label: {
-                        Label("打开", systemImage: "arrow.up.forward")
+                        Label("打开", systemImage: "macwindow")
                     }
                     Button {
                         selectedConfig = configManager.duplicateConfiguration(config)
@@ -67,7 +43,11 @@ struct ConfigurationListView: View {
                         Label("删除", systemImage: "trash")
                     }
                 }
-                .tag(config)
+            } primaryAction: { items in
+                // 双击 / 回车打开
+                if let config = items.first {
+                    openBrowser(for: config)
+                }
             }
             .navigationTitle("OSS 配置")
             .navigationSplitViewColumnWidth(min: 200, ideal: 250)
@@ -142,7 +122,8 @@ struct ConfigurationListView: View {
                     },
                     onCancel: {
                         // 不做任何事，只是保持选中状态
-                    }
+                    },
+                    onOpen: { openBrowser(for: $0) }
                 )
                 .id(selectedConfig?.id)  // 添加 id 以确保在切换配置时重新创建视图
             } else if configManager.configurations.isEmpty {

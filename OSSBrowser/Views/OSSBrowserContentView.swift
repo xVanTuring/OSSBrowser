@@ -35,10 +35,8 @@ struct OSSBrowserContentView: View {
     @State private var selectedBucket: BucketItem?
     @State private var isLoading = true
 
-    // 文件状态信息
-    @State private var currentFileCount = 0
-    @State private var currentSelectedCount = 0
-    @State private var currentIsLoading = false
+    // 文件浏览区状态（标题栏、详情栏使用）
+    @State private var fileStatus = FileBrowserStatus()
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var inspectShow: Bool = true
@@ -75,14 +73,11 @@ struct OSSBrowserContentView: View {
                             handleInvalidFavoritePath(bucketName: bucket.name, path: path)
                         },
                         inspectorPresented: $inspectShow,
-                        onFileCountUpdate: { itemCount, selectedCount, isLoading in
-                            // 传递文件状态信息到详情面板
-                            currentFileCount = itemCount
-                            currentSelectedCount = selectedCount
-                            currentIsLoading = isLoading
-                        }
+                        onStatusUpdate: { fileStatus = $0 }
                     )
-                    .navigationTitle(bucket.name)
+                    // 标题显示当前文件夹；在子目录时副标题显示 bucket 名
+                    .navigationTitle(fileStatus.currentFolderName ?? bucket.name)
+                    .navigationSubtitle(fileStatus.currentFolderName == nil ? "" : bucket.name)
                 }
                 // 普通切换 bucket 用 bucket.id；来自收藏的导航用独立的 target id，
                 // 确保即使目标 bucket 与当前一致也会重新加载到指定路径
@@ -99,9 +94,7 @@ struct OSSBrowserContentView: View {
             if let bucket = selectedBucket {
                 BucketDetailView(
                     bucket: bucket,
-                    fileCount: currentFileCount,
-                    selectedCount: currentSelectedCount,
-                    isLoading: currentIsLoading
+                    status: fileStatus
                 )
             } else {
                 Text("选择一个 Bucket 查看详情")

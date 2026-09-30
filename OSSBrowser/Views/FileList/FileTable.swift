@@ -11,7 +11,6 @@ import UniformTypeIdentifiers
 struct FileTable: View {
     let files: [OSSFile]
     @Binding var selectedFiles: Set<String>
-    let onFileDoubleClick: (OSSFile) -> Void
     let dropHandler: FileDropHandler
     let keyboardHandler: FileKeyboardHandler
     var onLoadMore: (() -> Void)? = nil
@@ -20,17 +19,8 @@ struct FileTable: View {
     @State private var sortOrder: [KeyPathComparator<OSSFile>] = [.init(\.name)]
     @State private var dropAreaActive = false
 
-    // 用于 Table 的选择状态
-    private var selectedFileIds: Binding<Set<String>> {
-        Binding {
-            selectedFiles
-        } set: { newValue in
-            selectedFiles = newValue
-        }
-    }
-
     var body: some View {
-        Table(sortedFiles, selection: selectedFileIds, sortOrder: $sortOrder) {
+        Table(sortedFiles, selection: $selectedFiles, sortOrder: $sortOrder) {
             // 名称列
             TableColumn("名称", value: \.name) { file in
                 HStack(spacing: 8) {

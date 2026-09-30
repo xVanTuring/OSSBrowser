@@ -21,6 +21,12 @@ struct FileContextMenu: View {
     let onDelete: (OSSFile) -> Void
     let onBatchDelete: () -> Void
     let onBatchDownload: () -> Void
+    /// 上传到指定文件夹（右键文件夹时）
+    let onUploadInto: (OSSFile) -> Void
+    /// 当前目录：新建文件夹
+    let onNewFolder: () -> Void
+    /// 当前目录：上传
+    let onUpload: () -> Void
 
     var body: some View {
         if selectedFiles.count > 1 {
@@ -30,6 +36,10 @@ struct FileContextMenu: View {
             }) {
                 Label("下载选中项 (\(selectedFiles.count))", systemImage: "arrow.down.circle")
             }
+
+            Divider()
+
+            FileBackgroundMenu(onNewFolder: onNewFolder, onUpload: onUpload)
 
             Divider()
 
@@ -65,6 +75,11 @@ struct FileContextMenu: View {
                 }) {
                     Label("下载文件夹", systemImage: "arrow.down.circle")
                 }
+                Button(action: {
+                    onUploadInto(file)
+                }) {
+                    Label("上传到此文件夹…", systemImage: "arrow.up.circle")
+                }
             } else {
                 Button(action: {
                     onDownloadFile(file)
@@ -98,13 +113,15 @@ struct FileContextMenu: View {
                 }
             }
 
-            Divider()
-
             Button(action: {
                 onRename(file)
             }) {
                 Label("重命名", systemImage: "pencil")
             }
+
+            Divider()
+
+            FileBackgroundMenu(onNewFolder: onNewFolder, onUpload: onUpload)
 
             Divider()
 

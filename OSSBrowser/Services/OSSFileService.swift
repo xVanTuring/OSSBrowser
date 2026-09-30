@@ -281,7 +281,7 @@ class OSSFileService: ObservableObject {
             throw OSSError.clientNotInitialized
         }
 
-        let directoryKey = currentPath.isEmpty ? "\(name)/" : "\(currentPath)/\(name)/"
+        let directoryKey = buildPrefix(for: currentPath) + "\(name)/"
 
         // 创建一个空对象表示目录
         let result = try await client.putObject(PutObjectRequest(
@@ -364,28 +364,48 @@ class OSSFileService: ObservableObject {
 
     // MARK: - Upload Methods
 
-    func uploadFile(_ url: URL) {
-        // 配置上传管理器
+    /// 上传文件到指定目录（默认当前目录）
+    func uploadFile(_ url: URL, into directory: String? = nil) {
         UploadManager.shared.configure(with: config, bucketName: bucketName)
-
-        // 构建远程路径
-        let remotePath = currentPath.isEmpty ? url.lastPathComponent : "\(currentPath)/\(url.lastPathComponent)"
-
+        let remotePath = buildPrefix(for: directory ?? currentPath) + url.lastPathComponent
         UploadManager.shared.uploadFile(url, to: remotePath, in: bucketName)
     }
 
-    func uploadFolder(_ url: URL) {
-        // 配置上传管理器
+    /// 上传文件夹到指定目录（默认当前目录）
+    func uploadFolder(_ url: URL, into directory: String? = nil) {
         UploadManager.shared.configure(with: config, bucketName: bucketName)
-
-        // 构建远程路径
-        let remotePath = currentPath.isEmpty ? url.lastPathComponent : "\(currentPath)/\(url.lastPathComponent)"
-
+        let remotePath = buildPrefix(for: directory ?? currentPath) + url.lastPathComponent
         UploadManager.shared.uploadFolder(url, to: remotePath, in: bucketName)
     }
 
-    func getFullRemotePath(for fileName: String) -> String {
-        return currentPath.isEmpty ? fileName : "\(currentPath)/\(fileName)"
+    /// 在指定目录下，返回 names 中已存在（同名文件或同名文件夹）的名称
+    func existingNames(_ names: [String], in directory: String) async throws -> [String] {
+        guard let client = client else {
+            throw OSSError.clientNotInitialized
+        }
+        let dirPrefix = buildPrefix(for: directory)
+        var result: [String] = []
+        for name in names {
+            let key = dirPrefix + name
+            // 分别精确检查同名文件（key）与同名文件夹（key/ 前缀），
+            // 避免 "a.txt.bak"、"dir-x" 这类前缀相近的对象干扰判断
+            if try await hasObject(withPrefix: key, exactKey: key, client: client) {
+                result.append(name)
+            } else if try await hasObject(withPrefix: key + "/", exactKey: nil, client: client) {
+                result.append(name)
+            }
+        }
+        return result
+    }
+
+    private func hasObject(withPrefix prefix: String, exactKey: String?, client: Client) async throws -> Bool {
+        let list = try await client.listObjectsV2(ListObjectsV2Request(
+            bucket: bucketName,
+            maxKeys: 1,
+            prefix: prefix
+        ))
+        guard let hit = list.contents?.first?.key else { return false }
+        return exactKey == nil || hit == exactKey
     }
 
     // MARK: - Rename Methods

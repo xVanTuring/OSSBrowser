@@ -14,6 +14,8 @@ private struct UploadConflict: Identifiable {
     let id = UUID()
     let urls: [URL]
     let conflictNames: [String]
+    /// 目标目录；nil 表示当前目录
+    let directory: String?
 }
 
 // 文件浏览器内容 - 不包含工具栏
@@ -24,7 +26,8 @@ struct OSSFileBrowserContent: View {
     let initialPath: String?
     /// 收藏路径在导航后被发现已不存在时回调（用于提示用户删除该收藏）
     let onInvalidFavoritePath: ((String) -> Void)?
-    let onFileCountUpdate: (Int, Int, Bool) -> Void
+    /// 向父视图同步状态（标题栏、详情栏使用）
+    let onStatusUpdate: (FileBrowserStatus) -> Void
     /// 详情栏（inspector）显示状态，由父视图持有
     @Binding var inspectorPresented: Bool
 
@@ -48,16 +51,29 @@ struct OSSFileBrowserContent: View {
         initialPath: String? = nil,
         onInvalidFavoritePath: ((String) -> Void)? = nil,
         inspectorPresented: Binding<Bool>,
-        onFileCountUpdate: @escaping (Int, Int, Bool) -> Void
+        onStatusUpdate: @escaping (FileBrowserStatus) -> Void
     ) {
         self.bucket = bucket
         self.config = config
         self.initialPath = initialPath
         self.onInvalidFavoritePath = onInvalidFavoritePath
         self._inspectorPresented = inspectorPresented
-        self.onFileCountUpdate = onFileCountUpdate
+        self.onStatusUpdate = onStatusUpdate
         self._fileService = StateObject(
             wrappedValue: OSSFileService(config: config, bucketName: bucket.name))
+    }
+
+    private var status: FileBrowserStatus {
+        let selected = selectedFiles.count == 1
+            ? fileService.files.first { selectedFiles.contains($0.id) }
+            : nil
+        return FileBrowserStatus(
+            itemCount: fileService.files.count,
+            selectedCount: selectedFiles.count,
+            isLoading: fileService.isLoading,
+            currentPath: fileService.currentPath,
+            selectedFile: selected
+        )
     }
 
     var body: some View {
@@ -71,7 +87,6 @@ struct OSSFileBrowserContent: View {
                 onLoadMore: {
                     Task { try? await fileService.loadMoreFiles() }
                 },
-                onFileSelect: handleFileSelect,
                 onFileDoubleClick: handleFileDoubleClick,
                 onDownloadFile: handleDownloadFile,
                 onDownloadFolder: handleDownloadFolder,
@@ -89,6 +104,7 @@ struct OSSFileBrowserContent: View {
                 onCreateFolder: handleCreateFolder,
                 onRefresh: handleRefresh,
                 onUpload: handlePickAndUpload,
+                onUploadInto: handlePickAndUpload(into:),
                 searchQuery: fileService.currentSearchQuery,
                 loadErrorMessage: fileService.loadError?.localizedDescription,
                 onRetry: handleRetry,
@@ -136,14 +152,8 @@ struct OSSFileBrowserContent: View {
                 }
             }
         }
-        .onChange(of: fileService.files.count) {
-            onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
-        }
-        .onChange(of: selectedFiles.count) {
-            onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
-        }
-        .onChange(of: fileService.isLoading) {
-            onFileCountUpdate(fileService.files.count, selectedFiles.count, fileService.isLoading)
+        .onChange(of: status, initial: true) { _, newStatus in
+            onStatusUpdate(newStatus)
         }
         .alert("错误", isPresented: .constant(fileService.error != nil)) {
             Button("确定") {
@@ -267,11 +277,11 @@ struct OSSFileBrowserContent: View {
             presenting: uploadConflict
         ) { conflict in
             Button("覆盖上传", role: .destructive) {
-                doUpload(conflict.urls)
+                doUpload(conflict.urls, into: conflict.directory)
             }
             Button("取消", role: .cancel) {}
         } message: { conflict in
-            Text("当前目录已存在以下 \(conflict.conflictNames.count) 个同名项目，继续将覆盖：\n\n" + conflict.conflictNames.joined(separator: "\n"))
+            Text("\(conflict.directory == nil ? "当前目录" : "目标文件夹")已存在以下 \(conflict.conflictNames.count) 个同名项目，继续将覆盖：\n\n" + conflict.conflictNames.joined(separator: "\n"))
         }
         // 轻量操作反馈 toast
         .overlay(alignment: .bottom) {
@@ -319,10 +329,6 @@ struct OSSFileBrowserContent: View {
     }
 
     // MARK: - Actions
-    private func handleFileSelect(_ file: OSSFile) {
-        // 处理文件选择
-        print("Selected file: \(file.name)")
-    }
 
     private func handleFileDoubleClick(_ file: OSSFile) {
         if file.isDirectory {
@@ -502,39 +508,72 @@ struct OSSFileBrowserContent: View {
     }
 
     private func handlePickAndUpload() {
+        guard let urls = pickUploadItems(message: "选择要上传到当前目录的文件或文件夹") else { return }
+        performUpload(urls: urls)
+    }
+
+    /// 右键文件夹 →「上传到此文件夹」
+    private func handlePickAndUpload(into folder: OSSFile) {
+        guard let urls = pickUploadItems(message: "选择要上传到「\(folder.name)」的文件或文件夹") else { return }
+        performUpload(urls: urls, into: folder.path)
+    }
+
+    private func pickUploadItems(message: String) -> [URL]? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
         panel.prompt = "上传"
-        panel.message = "选择要上传到当前目录的文件或文件夹"
+        panel.message = message
 
-        guard panel.runModal() == .OK else { return }
-        performUpload(urls: panel.urls)
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return nil }
+        return panel.urls
     }
 
     // MARK: - Upload with overwrite check
 
-    private func performUpload(urls: [URL]) {
+    /// directory 为 nil 时上传到当前目录（用已加载的列表判重）；
+    /// 否则上传到指定子目录（向 OSS 查询判重）
+    private func performUpload(urls: [URL], into directory: String? = nil) {
         guard !urls.isEmpty else { return }
-        let existingNames = Set(fileService.files.map { $0.name })
-        let conflictNames = urls.map { $0.lastPathComponent }.filter { existingNames.contains($0) }
-        if conflictNames.isEmpty {
-            doUpload(urls)
-        } else {
-            uploadConflict = UploadConflict(urls: urls, conflictNames: conflictNames)
+        let names = urls.map { $0.lastPathComponent }
+
+        guard let directory else {
+            let existingNames = Set(fileService.files.map { $0.name })
+            resolveConflicts(urls: urls, conflictNames: names.filter { existingNames.contains($0) }, directory: nil)
+            return
+        }
+
+        Task {
+            do {
+                let conflictNames = try await fileService.existingNames(names, in: directory)
+                resolveConflicts(urls: urls, conflictNames: conflictNames, directory: directory)
+            } catch {
+                fileService.error = error
+            }
         }
     }
 
-    private func doUpload(_ urls: [URL]) {
+    private func resolveConflicts(urls: [URL], conflictNames: [String], directory: String?) {
+        if conflictNames.isEmpty {
+            doUpload(urls, into: directory)
+        } else {
+            uploadConflict = UploadConflict(urls: urls, conflictNames: conflictNames, directory: directory)
+        }
+    }
+
+    private func doUpload(_ urls: [URL], into directory: String?) {
         for url in urls {
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
             if isDirectory.boolValue {
-                fileService.uploadFolder(url)
+                fileService.uploadFolder(url, into: directory)
             } else {
-                fileService.uploadFile(url)
+                fileService.uploadFile(url, into: directory)
             }
+        }
+        if let directory, let name = directory.split(separator: "/").last {
+            showToast("已加入上传队列：\(name)")
         }
     }
 
@@ -576,6 +615,6 @@ struct OSSFileBrowserContent: View {
             region: "cn-hangzhou"
         ),
         inspectorPresented: .constant(true),
-        onFileCountUpdate: { _, _, _ in }
+        onStatusUpdate: { _ in }
     )
 }

@@ -10,9 +10,7 @@ import AppKit
 
 struct BucketDetailView: View {
     let bucket: BucketItem
-    let fileCount: Int
-    let selectedCount: Int
-    let isLoading: Bool
+    let status: FileBrowserStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -64,25 +62,30 @@ struct BucketDetailView: View {
                     .font(.headline)
 
                 HStack {
-                    if isLoading {
+                    if status.isLoading {
                         ProgressView()
                             .scaleEffect(0.8)
                         Text("加载中...")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     } else {
-                        Text("\(fileCount) 个项目")
+                        Text("\(status.itemCount) 个项目")
                             .font(.caption)
                             .foregroundColor(.secondary)
 
-                        if selectedCount > 0 {
-                            Text("· \(selectedCount) 个已选择")
+                        if status.selectedCount > 0 {
+                            Text("· \(status.selectedCount) 个已选择")
                                 .font(.caption)
                                 .foregroundColor(.blue)
                         }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let file = status.selectedFile {
+                Divider()
+                FileDetailSection(file: file)
             }
 
             Spacer()
@@ -105,8 +108,6 @@ struct BucketDetailView: View {
             creationDate: Date(),
             storageClass: "Standard"
         ),
-        fileCount: 42,
-        selectedCount: 3,
-        isLoading: false
+        status: FileBrowserStatus(itemCount: 42, selectedCount: 1)
     )
 }

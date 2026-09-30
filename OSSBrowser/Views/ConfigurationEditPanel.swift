@@ -12,6 +12,8 @@ struct ConfigurationEditPanel: View {
     let isCreatingNew: Bool
     let onSave: (OSSConfiguration) -> Void
     let onCancel: () -> Void
+    /// 打开 OSS 浏览器（仅编辑已有配置时提供）
+    let onOpen: ((OSSConfiguration) -> Void)?
 
     @State private var name: String = ""
     @State private var accessKeyId: String = ""
@@ -29,11 +31,12 @@ struct ConfigurationEditPanel: View {
     // 新建时让初始焦点落到「配置名称」字段
     @FocusState private var isNameFocused: Bool
 
-    init(config: OSSConfiguration, isCreatingNew: Bool, onSave: @escaping (OSSConfiguration) -> Void, onCancel: @escaping () -> Void) {
+    init(config: OSSConfiguration, isCreatingNew: Bool, onSave: @escaping (OSSConfiguration) -> Void, onCancel: @escaping () -> Void, onOpen: ((OSSConfiguration) -> Void)? = nil) {
         self.config = config
         self.isCreatingNew = isCreatingNew
         self.onSave = onSave
         self.onCancel = onCancel
+        self.onOpen = onOpen
 
         // 初始化状态
         if isCreatingNew {
@@ -200,12 +203,31 @@ struct ConfigurationEditPanel: View {
                         .transition(.opacity)
                 }
 
-                Button("保存") {
-                    saveConfiguration()
+                // 有未保存修改时「保存」为主按钮，否则「打开」为主按钮
+                if let onOpen, !isCreatingNew {
+                    Button("保存") {
+                        saveConfiguration()
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!canSave)
+                    .keyboardShortcut(.return, modifiers: [.command])
+
+                    Button {
+                        onOpen(config)
+                    } label: {
+                        Label("打开", systemImage: "macwindow")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(hasChanges)
+                    .help(hasChanges ? "请先保存修改" : "在新窗口中浏览此配置下的 Bucket")
+                } else {
+                    Button("保存") {
+                        saveConfiguration()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSave)
+                    .keyboardShortcut(.return, modifiers: [.command])
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canSave)
-                .keyboardShortcut(.return, modifiers: [.command])
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)

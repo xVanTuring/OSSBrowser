@@ -15,7 +15,6 @@ struct FileListView: View {
     let hasMore: Bool
     let isLoadingMore: Bool
     let onLoadMore: () -> Void
-    let onFileSelect: (OSSFile) -> Void
     let onFileDoubleClick: (OSSFile) -> Void
     let onDownloadFile: (OSSFile) -> Void
     let onDownloadFolder: (OSSFile) -> Void
@@ -33,6 +32,8 @@ struct FileListView: View {
     let onCreateFolder: (String) -> Void
     let onRefresh: () -> Void
     let onUpload: () -> Void
+    /// 上传到指定文件夹（右键文件夹）
+    let onUploadInto: (OSSFile) -> Void
     /// 当前搜索前缀（为空表示非搜索状态），用于区分「空文件夹」与「搜索无结果」
     var searchQuery: String = ""
     /// 列表加载失败信息（非 nil 且列表为空时显示错误态）
@@ -47,23 +48,6 @@ struct FileListView: View {
     @State private var showingRenameAlert = false
     @State private var fileToRename: OSSFile?
     @State private var newFileName = ""
-
-    // 用于 Table 的选择状态
-    private var selectedFileIds: Binding<Set<String>> {
-        Binding {
-            selectedFiles
-        } set: { newValue in
-            selectedFiles = newValue
-            // 触发选择回调
-            if newValue.count == 1 {
-                if let fileId = newValue.first,
-                    let file = files.first(where: { $0.id == fileId })
-                {
-                    onFileSelect(file)
-                }
-            }
-        }
-    }
 
     private var dropHandler: FileDropHandler {
         FileDropHandler(
@@ -90,24 +74,12 @@ struct FileListView: View {
     }
 
     // 空白处 / 空文件夹的背景右键菜单
-    @ViewBuilder
-    private func backgroundContextMenu() -> some View {
-        Button {
-            isCreatingFolder = true
-        } label: {
-            Label("新建文件夹", systemImage: "folder.badge.plus")
-        }
-        Button {
-            onUpload()
-        } label: {
-            Label("上传文件…", systemImage: "arrow.up.doc")
-        }
-        Divider()
-        Button {
-            onRefresh()
-        } label: {
-            Label("刷新", systemImage: "arrow.clockwise")
-        }
+    private var backgroundContextMenu: FileBackgroundMenu {
+        FileBackgroundMenu(
+            onNewFolder: { isCreatingFolder = true },
+            onUpload: onUpload,
+            onRefresh: onRefresh
+        )
     }
 
     var body: some View {
@@ -134,12 +106,11 @@ struct FileListView: View {
                         dropHandler.handleDrop(providers: providers)
                     }
                     .background(emptyFolderDropActive ? Color.accentColor.opacity(0.1) : Color.clear)
-                    .contextMenu { backgroundContextMenu() }
+                    .contextMenu { backgroundContextMenu }
             } else {
                 FileTable(
                     files: files,
                     selectedFiles: $selectedFiles,
-                    onFileDoubleClick: onFileDoubleClick,
                     dropHandler: dropHandler,
                     keyboardHandler: keyboardHandler,
                     onLoadMore: hasMore ? onLoadMore : nil
@@ -147,7 +118,7 @@ struct FileListView: View {
                 .contextMenu(forSelectionType: OSSFile.ID.self) { clickedItems in
                     if clickedItems.isEmpty {
                         // 右键空白处 → 背景菜单
-                        backgroundContextMenu()
+                        backgroundContextMenu
                     } else {
                     FileContextMenu(
                         files: files,
@@ -169,7 +140,10 @@ struct FileListView: View {
                             showingDeleteAlert = true
                         },
                         onBatchDelete: handleBatchDelete,
-                        onBatchDownload: handleBatchDownload
+                        onBatchDownload: handleBatchDownload,
+                        onUploadInto: onUploadInto,
+                        onNewFolder: { isCreatingFolder = true },
+                        onUpload: onUpload
                     )
                     }
                 } primaryAction: { items in
@@ -283,7 +257,6 @@ struct FileListView: View {
         hasMore: false,
         isLoadingMore: false,
         onLoadMore: {},
-        onFileSelect: { _ in },
         onFileDoubleClick: { _ in },
         onDownloadFile: { _ in },
         onDownloadFolder: { _ in },
@@ -300,6 +273,7 @@ struct FileListView: View {
         isCreatingFolder: .constant(false),
         onCreateFolder: { _ in },
         onRefresh: {},
-        onUpload: {}
+        onUpload: {},
+        onUploadInto: { _ in }
     )
 }
