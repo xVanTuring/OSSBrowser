@@ -4,6 +4,8 @@
 //
 //  Created by xvan on 2025/12/9.
 //
+//  新建 / 编辑配置的弹出窗口（sheet）内容。保存或取消后由调用方关闭。
+//
 
 import SwiftUI
 
@@ -12,8 +14,6 @@ struct ConfigurationEditPanel: View {
     let isCreatingNew: Bool
     let onSave: (OSSConfiguration) -> Void
     let onCancel: () -> Void
-    /// 打开 OSS 浏览器（仅编辑已有配置时提供）
-    let onOpen: ((OSSConfiguration) -> Void)?
 
     @State private var name: String = ""
     @State private var accessKeyId: String = ""
@@ -23,44 +23,31 @@ struct ConfigurationEditPanel: View {
     @State private var useCustomEndpoint: Bool = false
     @State private var showingTestAlert = false
     @State private var testResult: String = ""
-    @State private var hasChanges = false
     @State private var isTesting = false          // 测试连接进行中
     @State private var isSecretVisible = false     // 是否明文显示 AccessKeySecret
-    @State private var showSaveSuccess = false     // 保存成功的短暂反馈
 
     // 新建时让初始焦点落到「配置名称」字段
     @FocusState private var isNameFocused: Bool
 
-    init(config: OSSConfiguration, isCreatingNew: Bool, onSave: @escaping (OSSConfiguration) -> Void, onCancel: @escaping () -> Void, onOpen: ((OSSConfiguration) -> Void)? = nil) {
+    init(config: OSSConfiguration, isCreatingNew: Bool, onSave: @escaping (OSSConfiguration) -> Void, onCancel: @escaping () -> Void) {
         self.config = config
         self.isCreatingNew = isCreatingNew
         self.onSave = onSave
         self.onCancel = onCancel
-        self.onOpen = onOpen
 
-        // 初始化状态
-        if isCreatingNew {
-            _name = State(initialValue: "")
-            _accessKeyId = State(initialValue: "")
-            _accessKeySecret = State(initialValue: "")
-            _region = State(initialValue: "cn-hangzhou")
-            _endpoint = State(initialValue: "")
-            _useCustomEndpoint = State(initialValue: false)
-        } else {
-            _name = State(initialValue: config.name)
-            _accessKeyId = State(initialValue: config.accessKeyId)
-            _accessKeySecret = State(initialValue: config.accessKeySecret)
-            _region = State(initialValue: config.region)
-            _endpoint = State(initialValue: config.endpoint ?? "")
-            _useCustomEndpoint = State(initialValue: config.endpoint != nil)
-        }
+        _name = State(initialValue: config.name)
+        _accessKeyId = State(initialValue: config.accessKeyId)
+        _accessKeySecret = State(initialValue: config.accessKeySecret)
+        _region = State(initialValue: config.region)
+        _endpoint = State(initialValue: config.endpoint ?? "")
+        _useCustomEndpoint = State(initialValue: config.endpoint != nil)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             // 标题栏
             HStack {
-                Text(isCreatingNew ? "新建配置" : "查看/编辑配置")
+                Text(isCreatingNew ? "新建配置" : "编辑配置")
                     .font(.title2)
                     .fontWeight(.semibold)
 
@@ -101,7 +88,6 @@ struct ConfigurationEditPanel: View {
                             TextField("例如：我的生产环境", text: $name)
                                 .textFieldStyle(.roundedBorder)
                                 .focused($isNameFocused)
-                                .onChange(of: name) { markHasChanged() }
                         }
                     }
 
@@ -115,7 +101,6 @@ struct ConfigurationEditPanel: View {
                                 requiredFieldLabel("Access Key ID")
                                 TextField("Access Key ID", text: $accessKeyId)
                                     .textFieldStyle(.roundedBorder)
-                                    .onChange(of: accessKeyId) { markHasChanged() }
                             }
 
                             VStack(alignment: .leading, spacing: 4) {
@@ -130,7 +115,6 @@ struct ConfigurationEditPanel: View {
                                         }
                                     }
                                     .textFieldStyle(.roundedBorder)
-                                    .onChange(of: accessKeySecret) { markHasChanged() }
 
                                     Button {
                                         isSecretVisible.toggle()
@@ -152,15 +136,12 @@ struct ConfigurationEditPanel: View {
                         OSSRegionPicker(title: "Region", selection: $region)
                             .pickerStyle(.menu)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .onChange(of: region) { markHasChanged() }
 
                         Toggle("使用自定义 Endpoint", isOn: $useCustomEndpoint)
-                            .onChange(of: useCustomEndpoint) { markHasChanged() }
 
                         if useCustomEndpoint {
                             TextField("https://oss-cn-hangzhou.aliyuncs.com", text: $endpoint)
                                 .textFieldStyle(.roundedBorder)
-                                .onChange(of: endpoint) { markHasChanged() }
                         }
                     }
                 }
@@ -172,20 +153,6 @@ struct ConfigurationEditPanel: View {
 
             // 底部按钮
             HStack(spacing: 12) {
-                // 新建模式：保留「取消」（Esc）；
-                // 编辑模式：隐藏「取消」，仅在有更改时出现「重置」（Esc 等同重置），避免无意义的空操作。
-                if isCreatingNew {
-                    Button("取消") {
-                        onCancel()
-                    }
-                    .keyboardShortcut(.escape)
-                } else if hasChanges {
-                    Button("重置") {
-                        resetToOriginal()
-                    }
-                    .keyboardShortcut(.escape)
-                }
-
                 // 必填缺失时提示原因，解释「保存」为何禁用
                 if let missing = missingRequiredFieldsMessage {
                     Label(missing, systemImage: "exclamationmark.circle")
@@ -195,43 +162,22 @@ struct ConfigurationEditPanel: View {
 
                 Spacer()
 
-                // 保存成功的短暂反馈
-                if showSaveSuccess {
-                    Label("已保存", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(.green)
-                        .transition(.opacity)
+                Button("取消") {
+                    onCancel()
                 }
+                .keyboardShortcut(.cancelAction)
 
-                // 有未保存修改时「保存」为主按钮，否则「打开」为主按钮
-                if let onOpen, !isCreatingNew {
-                    Button("保存") {
-                        saveConfiguration()
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!canSave)
-                    .keyboardShortcut(.return, modifiers: [.command])
-
-                    Button {
-                        onOpen(config)
-                    } label: {
-                        Label("打开", systemImage: "macwindow")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(hasChanges)
-                    .help(hasChanges ? "请先保存修改" : "在新窗口中浏览此配置下的 Bucket")
-                } else {
-                    Button("保存") {
-                        saveConfiguration()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canSave)
-                    .keyboardShortcut(.return, modifiers: [.command])
+                Button("保存") {
+                    saveConfiguration()
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canSave)
+                .keyboardShortcut(.return, modifiers: [.command])
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
         }
+        .frame(width: 480, height: 520)
         .onAppear {
             // 新建时把初始焦点放到「配置名称」
             if isCreatingNew {
@@ -247,10 +193,9 @@ struct ConfigurationEditPanel: View {
         }
     }
 
-    /// 必填字段是否齐全，且（编辑态）确有改动
+    /// 必填字段是否齐全
     private var canSave: Bool {
         !name.isEmpty && !accessKeyId.isEmpty && !accessKeySecret.isEmpty
-            && (hasChanges || isCreatingNew)
     }
 
     /// 缺失的必填字段提示；无缺失返回 nil
@@ -273,25 +218,6 @@ struct ConfigurationEditPanel: View {
                 .font(.subheadline)
                 .foregroundStyle(.red)
         }
-    }
-
-    private func markHasChanged() {
-        hasChanges = true
-    }
-
-    private func resetToOriginal() {
-        name = config.name
-        accessKeyId = config.accessKeyId
-        accessKeySecret = config.accessKeySecret
-        region = config.region
-        if let endpoint = config.endpoint {
-            self.endpoint = endpoint
-            useCustomEndpoint = true
-        } else {
-            endpoint = ""
-            useCustomEndpoint = false
-        }
-        hasChanges = false
     }
 
     private func testConnection() {
@@ -329,17 +255,17 @@ struct ConfigurationEditPanel: View {
     private func saveConfiguration() {
         let endpoint = useCustomEndpoint ? (endpoint.isEmpty ? nil : endpoint) : nil
 
-        // 创建新配置但保留原有 ID
-        var newConfig = OSSConfiguration(
-            name: name,
-            accessKeyId: accessKeyId,
-            accessKeySecret: accessKeySecret,
-            region: region,
-            endpoint: endpoint
-        )
-
-        // 如果是编辑模式，保留原有的 ID
-        if !isCreatingNew {
+        // 编辑时保留原有 ID，新建时生成新 ID
+        let newConfig: OSSConfiguration
+        if isCreatingNew {
+            newConfig = OSSConfiguration(
+                name: name,
+                accessKeyId: accessKeyId,
+                accessKeySecret: accessKeySecret,
+                region: region,
+                endpoint: endpoint
+            )
+        } else {
             newConfig = OSSConfiguration(
                 id: config.id,
                 name: name,
@@ -351,23 +277,13 @@ struct ConfigurationEditPanel: View {
         }
 
         onSave(newConfig)
-
-        // 保存成功闭环：复位 hasChanges（置灰保存按钮）并给出短暂成功反馈
-        hasChanges = false
-        withAnimation { showSaveSuccess = true }
-        Task {
-            try? await Task.sleep(for: .seconds(2))
-            await MainActor.run {
-                withAnimation { showSaveSuccess = false }
-            }
-        }
     }
 }
 
 #Preview {
     ConfigurationEditPanel(
         config: OSSConfiguration(
-            name: "Test Config",
+            name: "",
             accessKeyId: "",
             accessKeySecret: "",
             region: "cn-hangzhou"

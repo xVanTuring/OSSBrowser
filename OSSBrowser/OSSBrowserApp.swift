@@ -13,11 +13,12 @@ struct OSSBrowserApp: App {
     @StateObject private var configManager = ConfigurationManager()
 
     var body: some Scene {
-        // 配置管理窗口（首页）：固定尺寸
+        // 配置管理窗口（首页）：固定尺寸、隐藏标题栏的启动窗口
         WindowGroup("配置管理") {
             ConfigurationListView()
                 .environmentObject(configManager)
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         .defaultSize(width: 760, height: 540)
 

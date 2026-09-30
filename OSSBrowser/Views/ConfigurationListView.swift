@@ -4,134 +4,95 @@
 //
 //  Created by xvan on 2025/12/9.
 //
+//  启动窗口：左侧应用信息 + 新建配置，右侧配置列表（编辑 / 打开）。
+//  新建与编辑在弹出窗口中进行。
+//
 
 import SwiftUI
+
+/// 弹出编辑窗口的目标；每次生成新 id，保证重复编辑同一配置也会重建表单
+private struct EditTarget: Identifiable {
+    let id = UUID()
+    let config: OSSConfiguration
+    let isCreatingNew: Bool
+}
 
 struct ConfigurationListView: View {
     @StateObject private var configManager = ConfigurationManager()
     @Environment(\.openWindow) private var openWindow
-    @State private var selectedConfig: OSSConfiguration?
-    @State private var editingConfig: OSSConfiguration?
-    @State private var isCreatingNew = false
-    @State private var showingDeleteAlert = false
+    @State private var editTarget: EditTarget?
     @State private var configToDelete: OSSConfiguration?
 
     var body: some View {
-        NavigationSplitView {
-            // 左侧配置列表
-            List(configManager.configurations, id: \.id, selection: $selectedConfig) { config in
-                ConfigurationRow(config: config, isSelected: selectedConfig?.id == config.id)
-                    .tag(config)
-            }
-            .contextMenu(forSelectionType: OSSConfiguration.self) { items in
-                if let config = items.first {
-                    Button {
-                        openBrowser(for: config)
-                    } label: {
-                        Label("打开", systemImage: "macwindow")
-                    }
-                    Button {
-                        selectedConfig = configManager.duplicateConfiguration(config)
-                    } label: {
-                        Label("复制配置", systemImage: "plus.square.on.square")
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        configToDelete = config
-                        showingDeleteAlert = true
-                    } label: {
-                        Label("删除", systemImage: "trash")
-                    }
-                }
-            } primaryAction: { items in
-                // 双击 / 回车打开
-                if let config = items.first {
-                    openBrowser(for: config)
-                }
-            }
-            .navigationTitle("OSS 配置")
-            .navigationSplitViewColumnWidth(min: 200, ideal: 250)
-            // 首次启动引导：无任何配置时叠加空状态与「新建配置」入口
-            .overlay {
-                if configManager.configurations.isEmpty {
-                    ContentUnavailableView {
-                        Label("还没有配置", systemImage: "externaldrive.badge.plus")
-                    } description: {
-                        Text("创建一个 OSS 配置，即可开始浏览你的 Bucket。")
-                    } actions: {
-                        Button {
-                            addNewConfiguration()
-                        } label: {
-                            Label("新建配置", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-            }
-            .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button(action: { addNewConfiguration() }) {
-                        Image(systemName: "plus")
-                    }
-                    .help("添加配置")
+        HStack(spacing: 0) {
+            LauncherSidebar(onNewConfiguration: addNewConfiguration)
 
-                    Button(action: { duplicateSelectedConfiguration() }) {
-                        Image(systemName: "plus.square.on.square")
-                    }
-                    .disabled(selectedConfig == nil)
-                    .help("复制配置")
+            Divider()
 
-                    Button(action: { deleteSelectedConfiguration() }) {
-                        Image(systemName: "minus")
+            configurationList
+        }
+        .sheet(item: $editTarget) { target in
+            ConfigurationEditPanel(
+                config: target.config,
+                isCreatingNew: target.isCreatingNew,
+                onSave: { saved in
+                    if target.isCreatingNew {
+                        configManager.addConfiguration(saved)
+                    } else {
+                        configManager.updateConfiguration(saved)
                     }
-                    .disabled(selectedConfig == nil)
-                    .help("删除配置")
+                    editTarget = nil
+                },
+                onCancel: { editTarget = nil }
+            )
+        }
+        .alert(
+            "删除配置",
+            isPresented: Binding(
+                get: { configToDelete != nil },
+                set: { if !$0 { configToDelete = nil } }
+            ),
+            presenting: configToDelete
+        ) { config in
+            Button("删除", role: .destructive) {
+                configManager.deleteConfiguration(config)
+            }
+            Button("取消", role: .cancel) {}
+        } message: { config in
+            Text("确定要删除配置 \"\(config.name)\" 吗？此操作无法撤销。")
+        }
+        // 首页固定尺寸，禁止拖拽调整大小与全屏
+        .frame(width: 760, height: 540)
+        .fixedSizeWindow()
+    }
+
+    // MARK: - 右侧配置列表
+
+    private var configurationList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("配置")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Spacer()
+                if !configManager.configurations.isEmpty {
+                    Text("\(configManager.configurations.count)")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.primary.opacity(0.08)))
                 }
             }
-            .onDeleteCommand(perform: deleteSelectedConfiguration)
-        } detail: {
-            // 右侧编辑面板
-            if isCreatingNew {
-                // 新建模式
-                ConfigurationEditPanel(
-                    config: OSSConfiguration(
-                        name: "",
-                        accessKeyId: "",
-                        accessKeySecret: "",
-                        region: "cn-hangzhou"
-                    ),
-                    isCreatingNew: true,
-                    onSave: { newConfig in
-                        configManager.addConfiguration(newConfig)
-                        selectedConfig = newConfig
-                        isCreatingNew = false
-                    },
-                    onCancel: {
-                        isCreatingNew = false
-                        selectedConfig = nil
-                    }
-                )
-            } else if selectedConfig != nil {
-                // 查看/编辑模式
-                ConfigurationEditPanel(
-                    config: selectedConfig!,
-                    isCreatingNew: false,
-                    onSave: { updatedConfig in
-                        configManager.updateConfiguration(updatedConfig)
-                        selectedConfig = updatedConfig
-                    },
-                    onCancel: {
-                        // 不做任何事，只是保持选中状态
-                    },
-                    onOpen: { openBrowser(for: $0) }
-                )
-                .id(selectedConfig?.id)  // 添加 id 以确保在切换配置时重新创建视图
-            } else if configManager.configurations.isEmpty {
-                // 空状态一：还没有任何配置
+            .padding(.horizontal, 24)
+            .padding(.top, 36)
+            .padding(.bottom, 12)
+
+            if configManager.configurations.isEmpty {
                 ContentUnavailableView {
                     Label("还没有配置", systemImage: "externaldrive.badge.plus")
                 } description: {
-                    Text("点击创建你的第一个 OSS 配置。")
+                    Text("创建一个 OSS 配置，即可开始浏览你的 Bucket。")
                 } actions: {
                     Button {
                         addNewConfiguration()
@@ -140,58 +101,33 @@ struct ConfigurationListView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                // 空状态二：已有配置但未选中
-                ContentUnavailableView(
-                    "未选中配置",
-                    systemImage: "server.rack",
-                    description: Text("从左侧选择一个配置进行编辑，或点击右上角的 + 新建配置。")
-                )
-            }
-        }
-        .alert("删除配置", isPresented: $showingDeleteAlert) {
-            Button("删除", role: .destructive) {
-                if let config = configToDelete {
-                    configManager.deleteConfiguration(config)
-                    if selectedConfig?.id == config.id {
-                        selectedConfig = nil
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(configManager.configurations, id: \.id) { config in
+                            ConfigurationRow(
+                                config: config,
+                                onEdit: { editTarget = EditTarget(config: config, isCreatingNew: false) },
+                                onOpen: { openWindow(value: config) },
+                                onDuplicate: { _ = configManager.duplicateConfiguration(config) },
+                                onDelete: { configToDelete = config }
+                            )
+                        }
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
                 }
             }
-            Button("取消", role: .cancel) {}
-        } message: {
-            if let config = configToDelete {
-                Text("确定要删除配置 \"\(config.name)\" 吗？此操作无法撤销。")
-            }
         }
-        // 首页固定尺寸，禁止拖拽调整大小与全屏
-        .frame(width: 760, height: 540)
-        .fixedSizeWindow()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func addNewConfiguration() {
-        editingConfig = nil
-        isCreatingNew = true
-        selectedConfig = nil
-    }
-
-    private func deleteSelectedConfiguration() {
-        if let config = selectedConfig {
-            configToDelete = config
-            showingDeleteAlert = true
-        }
-    }
-
-    private func openBrowser(for config: OSSConfiguration) {
-        // 使用 SwiftUI 的 openWindow API 打开浏览器窗口
-        selectedConfig = config
-        openWindow(value: config)
-    }
-
-    private func duplicateSelectedConfiguration() {
-        guard let config = selectedConfig else { return }
-        let copy = configManager.duplicateConfiguration(config)
-        selectedConfig = copy
+        editTarget = EditTarget(
+            config: OSSConfiguration(name: "", accessKeyId: "", accessKeySecret: "", region: "cn-hangzhou"),
+            isCreatingNew: true
+        )
     }
 }
 
