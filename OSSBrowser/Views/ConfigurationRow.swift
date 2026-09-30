@@ -13,6 +13,10 @@ struct ConfigurationRow: View {
     let onOpen: () -> Void
     let onDuplicate: () -> Void
     let onDelete: () -> Void
+    /// 所有分组与当前所属分组，用于「移动到分组」菜单
+    let groups: [ConfigGroup]
+    let currentGroupId: UUID?
+    let onMove: (UUID?) -> Void
 
     @State private var isHovering = false
 
@@ -65,6 +69,19 @@ struct ConfigurationRow: View {
             }
             Button(action: onDuplicate) {
                 Label("复制配置", systemImage: "plus.square.on.square")
+            }
+            if !groups.isEmpty {
+                Menu {
+                    ForEach(groups) { group in
+                        Button(group.name) { onMove(group.id) }
+                            .disabled(group.id == currentGroupId)
+                    }
+                    Divider()
+                    Button("未分组") { onMove(nil) }
+                        .disabled(currentGroupId == nil)
+                } label: {
+                    Label("移动到分组", systemImage: "folder")
+                }
             }
             Divider()
             Button(role: .destructive, action: onDelete) {

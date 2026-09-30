@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  与 Xcode 自动生成的 Info.plist 合并（GENERATE_INFOPLIST_FILE = YES）。
+  这里只放无法用 INFOPLIST_KEY_* 构建设置表达的内容：.ossconfig 文件类型声明与关联。
+  放在同步文件夹 OSSBrowser/ 之外，避免被当作资源重复打包。
+-->
+<plist version="1.0">
+<dict>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>tech.xvanturing.ossconfig</string>
+			<key>UTTypeDescription</key>
+			<string>OSSBrowser 配置</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>ossconfig</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>OSSBrowser 配置</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>tech.xvanturing.ossconfig</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

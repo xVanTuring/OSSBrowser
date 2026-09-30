@@ -10,13 +10,16 @@ import Combine
 
 @main
 struct OSSBrowserApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var configManager = ConfigurationManager()
 
     var body: some Scene {
-        // 配置管理窗口（首页）：固定尺寸、隐藏标题栏的启动窗口
-        WindowGroup("配置管理") {
+        // 配置管理窗口（首页）：固定尺寸、隐藏标题栏的启动窗口。
+        // 用单实例 Window，打开 .ossconfig 文件时切到前台而不是再开一个
+        Window("配置管理", id: ConfigImportRequests.launcherWindowID) {
             ConfigurationListView()
                 .environmentObject(configManager)
+                .registersLauncherOpener()
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -28,6 +31,8 @@ struct OSSBrowserApp: App {
                 OSSBrowserContentView(config: config, ossService: OSSService())
                     // 窗口标题设为配置名，便于多窗口区分
                     .navigationTitle(config.name)
+                    // 启动窗口关闭后，打开 .ossconfig 文件仍能把它重新打开
+                    .registersLauncherOpener()
             } else {
                 Text("请从配置管理窗口打开 OSS 浏览器")
                     .foregroundColor(.secondary)
